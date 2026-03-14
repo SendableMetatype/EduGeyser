@@ -114,6 +114,54 @@ public interface GeyserConfig {
         return UUID.randomUUID();
     }
 
+    @Comment("""
+            The signed token for Minecraft Education Edition authentication.
+            Obtain this from https://meeservices.azurewebsites.net/v2/signin using your tenant's credentials.
+            Leave empty to disable Education Edition support.""")
+    @DefaultString("")
+    String educationToken();
+
+    @Comment("""
+            Education Edition dedicated server ID from the admin portal.
+            If left empty and edu-server-name is set, Geyser will automatically register a new server.
+            The server ID will be saved to edu_session.json after registration.""")
+    @DefaultString("")
+    String eduServerId();
+
+    @Comment("""
+            Public IP:port for Education Edition server registration (e.g. "mc.example.com:19132").
+            If empty, Geyser will attempt to auto-detect your public IP.
+            It is recommended to set this manually, as auto-detection may fail behind NAT, proxies, or some hosting providers.
+            This must be reachable by Education Edition clients for them to connect.""")
+    @DefaultString("")
+    String eduServerIp();
+
+    @Comment("""
+            Display name for the Education Edition server, visible in the Minecraft Education server list.
+            Set this to enable Education Edition support when no edu-server-id is configured.
+            A new server will be automatically registered with this name on first run.""")
+    @DefaultString("")
+    String eduServerName();
+
+    @Comment("Maximum number of Education Edition players that can connect. Used for the server list display.")
+    @DefaultNumeric(40)
+    int eduMaxPlayers();
+
+    @Comment("""
+            Education Edition authentication mode:
+            "verified" = require a valid, cryptographically signed login chain (prevents username spoofing).
+            "permissive" = allow Education Edition clients without chain verification (NOT recommended for production).""")
+    @DefaultString("verified")
+    String eduAuthMode();
+
+    @Comment("Whether to use the player's real Microsoft 365 display name instead of their Bedrock gamertag.")
+    @DefaultBoolean(true)
+    boolean eduUseRealNames();
+
+    @Comment("Whether to log the tenant ID and AD role when an Education Edition player connects.")
+    @DefaultBoolean(true)
+    boolean eduLogTenant();
+
     @Comment("If debug messages should be sent through console")
     boolean debugMode();
 

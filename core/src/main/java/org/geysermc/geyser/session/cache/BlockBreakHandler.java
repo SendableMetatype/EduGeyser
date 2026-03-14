@@ -223,7 +223,8 @@ public class BlockBreakHandler {
 
                     handleStartBreak(position, state, Direction.getUntrusted(actionData, PlayerBlockActionData::getFace), packet.getTick());
                 }
-                case BLOCK_CONTINUE_DESTROY -> {
+                case BLOCK_CONTINUE_DESTROY, CONTINUE_BREAK -> {
+                    // Education Edition sends CONTINUE_BREAK instead of BLOCK_CONTINUE_DESTROY
                     if (testForItemFrameEntity(position) || testForLastBreakPosOrReset(position) || abortDueToBlockRestoring(position)) {
                         continue;
                     }
@@ -285,7 +286,7 @@ public class BlockBreakHandler {
 
                     handlePredictDestroy(position, state, Direction.getUntrusted(actionData, PlayerBlockActionData::getFace), packet.getTick());
                 }
-                case ABORT_BREAK -> {
+                case ABORT_BREAK, STOP_BREAK -> {
                     // Also handles item frame interactions in adventure mode
                     if (testForItemFrameEntity(position)) {
                         continue;
@@ -293,6 +294,23 @@ public class BlockBreakHandler {
 
                     BlockState state = getCurrentBlockState(position);
                     if (testForLectern(session, position, state)) {
+                        continue;
+                    }
+
+                    // Education Edition sends STOP_BREAK instead of BLOCK_PREDICT_DESTROY
+                    // when a block finishes breaking. If we have an active break at this
+                    // position with sufficient progress, treat it as a completed break.
+                    if (actionData.getAction() == PlayerActionType.STOP_BREAK
+                            && session.isEducationClient()
+                            && currentBlockPos != null
+                            && currentBlockState != null
+                            && currentBlockFace != null
+                            && currentProgress >= 0.65F) {
+                        Vector3i minedPos = currentBlockPos;
+                        destroyBlock(currentBlockState, currentBlockPos, currentBlockFace, false);
+                        // Prevent the subsequent CONTINUE_BREAK (same packet) from
+                        // starting a new break on the block behind
+                        this.lastMinedPosition = minedPos;
                         continue;
                     }
 

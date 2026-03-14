@@ -50,6 +50,8 @@ import org.geysermc.mcprotocollib.protocol.packet.handshake.serverbound.ClientIn
 
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 
 public class GeyserSessionAdapter extends SessionAdapter {
@@ -86,17 +88,23 @@ public class GeyserSessionAdapter extends SessionAdapter {
                         bedrockAddress = bedrockAddress.substring(0, ipv6ScopeIndex);
                     }
 
+                    boolean isEdu = session.isEducationClient();
+                    String xuid = isEdu && (session.xuid() == null || session.xuid().isEmpty()) ? "0" : session.xuid();
+                    String tenantId = isEdu && clientData.getTenantId() != null ? clientData.getTenantId() : "";
+                    int adRole = isEdu ? clientData.getAdRole() : -1;
+
                     encryptedData = cipher.encryptFromString(BedrockData.of(
                         clientData.getGameVersion(),
                         session.bedrockUsername(),
-                        session.xuid(),
+                        xuid,
                         clientData.getDeviceOs().ordinal(),
                         clientData.getLanguageCode(),
                         clientData.getUiProfile().ordinal(),
                         clientData.getCurrentInputMode().ordinal(),
                         bedrockAddress,
                         skinUploader == null ? 0 : skinUploader.getId(),
-                        skinUploader == null ? null : skinUploader.getVerifyCode()
+                        skinUploader == null ? null : skinUploader.getVerifyCode(),
+                        isEdu, tenantId, adRole
                     ).toString());
                 } catch (Exception e) {
                     geyser.getLogger().error(GeyserLocale.getLocaleStringLog("geyser.auth.floodgate.encrypt_fail"), e);
@@ -139,7 +147,13 @@ public class GeyserSessionAdapter extends SessionAdapter {
         if (uuid == null) {
             // Set what our UUID *probably* is going to be
             if (session.remoteServer().authType() == AuthType.FLOODGATE) {
-                uuid = new UUID(0, Long.parseLong(session.xuid()));
+                if (session.isEducationClient()) {
+                    BedrockClientData cd = session.getClientData();
+                    String tenantId = cd.getTenantId() != null ? cd.getTenantId() : "";
+                    uuid = createEducationUuid(tenantId, session.bedrockUsername());
+                } else {
+                    uuid = new UUID(0, Long.parseLong(session.xuid()));
+                }
             } else {
                 uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + session.getProtocol().getProfile().getName()).getBytes(StandardCharsets.UTF_8));
             }
@@ -236,5 +250,21 @@ public class GeyserSessionAdapter extends SessionAdapter {
         if (geyser.config().debugMode())
             event.getCause().printStackTrace();
         event.setSuppress(true);
+    }
+
+    private static final long EDUCATION_UUID_MSB = 0x0000000100000001L;
+
+    private static UUID createEducationUuid(String tenantId, String username) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((tenantId + ":" + username).getBytes(StandardCharsets.UTF_8));
+            long lsb = 0;
+            for (int i = 0; i < 8; i++) {
+                lsb = (lsb << 8) | (hash[i] & 0xFF);
+            }
+            return new UUID(EDUCATION_UUID_MSB, lsb);
+        } catch (NoSuchAlgorithmException e) {
+            throw new AssertionError("SHA-256 not available", e);
+        }
     }
 }

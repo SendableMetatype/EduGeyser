@@ -225,9 +225,11 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         // Fire SessionInitializeEvent here as we now know the client data
         geyser.eventBus().fire(new SessionInitializeEvent(session));
 
+        geyser.getLogger().info("[EduHandshake] Sending PlayStatusPacket LOGIN_SUCCESS...");
         PlayStatusPacket playStatus = new PlayStatusPacket();
         playStatus.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
         session.sendUpstreamPacket(playStatus);
+        geyser.getLogger().info("[EduHandshake] PlayStatusPacket sent.");
 
         this.resourcePackLoadEvent = new SessionLoadResourcePacksEventImpl(session);
         this.geyser.eventBus().fireEventElseKick(this.resourcePackLoadEvent, session);
@@ -246,7 +248,10 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         resourcePacksInfo.setWorldTemplateId(UUID.randomUUID());
         resourcePacksInfo.setWorldTemplateVersion("*");
 
+        geyser.getLogger().info("[EduHandshake] Sending ResourcePacksInfoPacket (packs=" +
+            resourcePacksInfo.getResourcePackInfos().size() + ", forced=" + resourcePacksInfo.isForcedToAccept() + ")...");
         session.sendUpstreamPacket(resourcePacksInfo);
+        geyser.getLogger().info("[EduHandshake] ResourcePacksInfoPacket sent. Waiting for client ResourcePackClientResponsePacket...");
 
         GeyserLocale.loadGeyserLocale(session.locale());
         return PacketSignal.HANDLED;
@@ -254,6 +259,7 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
 
     @Override
     public PacketSignal handle(ResourcePackClientResponsePacket packet) {
+        geyser.getLogger().info("[EduHandshake] Received ResourcePackClientResponsePacket! Status=" + packet.getStatus());
         if (session.getUpstream().isClosed() || session.isClosed()) {
             return PacketSignal.HANDLED;
         }
@@ -269,7 +275,6 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
                 if (geyser.config().java().authType() != AuthType.ONLINE) {
                     session.authenticate(session.getAuthData().name());
                 } else if (!couldLoginUserByName(session.getAuthData().name())) {
-                    // We must spawn the white world
                     session.connect();
                 }
                 geyser.getLogger().info(GeyserLocale.getLocaleStringLog("geyser.network.connect", session.getAuthData().name() +

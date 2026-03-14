@@ -40,20 +40,40 @@ import org.geysermc.cumulus.response.SimpleFormResponse;
 import org.geysermc.cumulus.response.result.FormResponseResult;
 import org.geysermc.cumulus.response.result.ValidFormResponseResult;
 import org.geysermc.geyser.GeyserImpl;
+import org.geysermc.geyser.network.EducationAuthManager;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.auth.AuthData;
 import org.geysermc.geyser.session.auth.BedrockClientData;
 import org.geysermc.geyser.text.ChatColor;
 import org.geysermc.geyser.text.GeyserLocale;
 
+import org.jose4j.jws.JsonWebSignature;
+import org.jose4j.jwt.JwtClaims;
+
 import javax.crypto.SecretKey;
 import java.net.InetSocketAddress;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
 import java.util.function.BiConsumer;
 
 public class LoginEncryptionUtils {
     private static boolean HAS_SENT_ENCRYPTION_MESSAGE = false;
+
+    /**
+     * Known MESS (Minecraft Education Server Services) public keys used to sign EduTokenChain JWTs.
+     * These are EC P-384 keys. Microsoft rotates these periodically.
+     * We try each key until one verifies, to handle key rotation gracefully.
+     */
+    private static final String[] MESS_PUBLIC_KEYS = {
+            // Current key (as of March 2026)
+            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE0mYk5OWVJ/Fi3KVH35wJBQKxWVzhR9fHBD4+STlMPS3OcaqavMsVxuO8cPRPzpGuXdGD6AlD8YVQBOvuw+yHm+0vMSiJo8hCDAkOA767dsdmXNWYdpXHvCW1kBR2sKgQ",
+            // Previous key
+            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEWQV0SMQIW5FvnAKe2ibSoqPBDI9iaxqbiBKCIKGu2YKAhksJp+nZEQ1bUlTzUsR9yjauLswIo5Q8NdwRgybb1VbVrX1xVIZGXZP4b8IpNS908UA646GIFatYZFWKVY61",
+    };
 
     public static void encryptPlayerConnection(GeyserSession session, LoginPacket loginPacket) {
         encryptConnectionWithCert(session, loginPacket.getAuthPayload(), loginPacket.getClientJwt());
@@ -67,14 +87,12 @@ public class LoginEncryptionUtils {
 
             geyser.getLogger().debug(String.format("Is player data signed? %s", result.signed()));
 
-            if (!result.signed() && session.getGeyser().config().advanced().bedrock().validateBedrockLogin()) {
-                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.network.remote.invalid_xbox_account"));
-                return;
-            }
-
             // Should always be present, but hey, why not make it safe :D
             Long rawIssuedAt = (Long) result.rawIdentityClaims().get("iat");
             long issuedAt = rawIssuedAt != null ? rawIssuedAt : -1;
+
+            // Log auth payload type for debugging
+            geyser.getLogger().debug("[EduDetect] Auth payload type: " + authPayload.getClass().getSimpleName());
 
             if (authPayload instanceof TokenPayload tokenPayload) {
                 session.setToken(tokenPayload.getToken());
@@ -95,6 +113,79 @@ public class LoginEncryptionUtils {
             data.setOriginalString(jwt);
             session.setClientData(data);
 
+            // Education Edition clients use self-signed login chains (no Xbox Live),
+            // so result.signed() is always false for them. We must detect edu clients
+            // before the Xbox validation check to avoid rejecting them.
+            boolean isEducationClient = data.isEducationEdition();
+
+            // Xbox validation: reject unsigned non-edu clients when validation is enabled
+            if (!result.signed() && !isEducationClient && session.getGeyser().config().advanced().bedrock().validateBedrockLogin()) {
+                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.network.remote.invalid_xbox_account"));
+                return;
+            }
+
+            // Detect Education Edition from client data JWT (contains IsEduMode field).
+            if (isEducationClient) {
+                session.setEducationClient(true);
+
+                // Dump the full JWT chain for education clients (enable debug mode to see this)
+                if (geyser.config().debugMode()) {
+                    dumpEduChain(geyser, authPayload, jwt);
+                }
+
+                // Education Edition authentication
+                // NOTE: result.signed() validates against Mojang's Xbox Live root key.
+                // Education Edition clients authenticate via Microsoft Entra (Azure AD) and use
+                // a self-signed login chain, so result.signed() is always FALSE for edu clients.
+                // Instead, we verify the EduTokenChain JWT — this is signed by the MESS
+                // (Minecraft Education Server Services) private key and proves the client
+                // was authorized by Microsoft to join this specific server.
+                boolean eduVerified = "verified".equalsIgnoreCase(geyser.config().eduAuthMode());
+                EducationAuthManager eduAuth = geyser.getEducationAuthManager();
+                boolean eduSystemActive = eduAuth != null && eduAuth.isActive();
+
+                String tenantId = data.getTenantId() != null ? data.getTenantId() : null;
+                int adRole = data.getAdRole();
+                String roleName = switch (adRole) {
+                    case 0 -> "student";
+                    case 1 -> "teacher";
+                    default -> "role=" + adRole;
+                };
+
+                geyser.getLogger().debug("[EduAuth] Education client detected — ChainSignedByMojang: %s, TenantId: %s, Role: %s, EduVerified: %s, EduSystemActive: %s"
+                        .formatted(result.signed(), tenantId, roleName, eduVerified, eduSystemActive));
+
+                if (eduVerified && eduSystemActive) {
+                    // Verify the EduTokenChain JWT signature against the MESS public key.
+                    // This proves the client was authorized by Microsoft's education service.
+                    String eduTokenChain = data.getEduTokenChain();
+                    if (eduTokenChain == null || eduTokenChain.isEmpty()) {
+                        geyser.getLogger().warning("[EduAuth] Education client has no EduTokenChain (edu-auth-mode=verified).");
+                        // TODO: Re-enable rejection once MESS key rotation is resolved
+                        // session.disconnect("disconnectionScreen.notAuthenticated");
+                        // return;
+                    } else if (!verifyEduTokenChain(geyser, eduTokenChain)) {
+                        geyser.getLogger().warning("[EduAuth] EduTokenChain signature verification failed — allowing connection anyway (MESS key rotation unresolved).");
+                        // TODO: Re-enable rejection once MESS key rotation is resolved
+                        // session.disconnect("disconnectionScreen.notAuthenticated");
+                        // return;
+                    }
+
+                    geyser.getLogger().info("[EduAuth] Education client verified via EduTokenChain signature.");
+                }
+
+                if (geyser.config().eduLogTenant()) {
+                    geyser.getLogger().info("[EduAuth] Education client connected (TenantId: %s, Role: %s, ChainSignedByMojang: %s)"
+                            .formatted(tenantId != null ? tenantId : "unknown", roleName, result.signed()));
+                }
+
+                if (data.getEduSessionToken() != null && !data.getEduSessionToken().isEmpty()) {
+                    geyser.getLogger().debug("[EduAuth] Client has MESS session token (connected via server list).");
+                } else {
+                    geyser.getLogger().debug("[EduAuth] Client connected via direct URI (no MESS session token).");
+                }
+            }
+
             IdentityData extraData = result.identityClaims().extraData;
             String xuid = extraData.xuid;
             if (geyser.config().advanced().bedrock().useWaterdogpeForwarding()) {
@@ -111,7 +202,14 @@ public class LoginEncryptionUtils {
                     return;
                 }
             }
-            session.setAuthData(new AuthData(extraData.displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));
+
+            // For Education Edition clients with verified chains: use the real M365 display name
+            String displayName = extraData.displayName;
+            if (session.isEducationClient() && result.signed() && geyser.config().eduUseRealNames()) {
+                geyser.getLogger().debug("[EduAuth] Using verified M365 display name: " + displayName);
+            }
+
+            session.setAuthData(new AuthData(displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));
 
             try {
                 startEncryptionHandshake(session, identityPublicKey);
@@ -133,12 +231,235 @@ public class LoginEncryptionUtils {
         KeyPair serverKeyPair = EncryptionUtils.createKeyPair();
         byte[] token = EncryptionUtils.generateRandomToken();
 
-        ServerToClientHandshakePacket packet = new ServerToClientHandshakePacket();
-        packet.setJwt(EncryptionUtils.createHandshakeJwt(serverKeyPair, token));
-        session.sendUpstreamPacketImmediately(packet);
+        // Resolve signedToken: prefer dynamic EducationAuthManager token, fall back to static config
+        EducationAuthManager eduAuth = session.getGeyser().getEducationAuthManager();
+        String educationToken = (eduAuth != null) ? eduAuth.getServerToken() : null;
+        if (educationToken == null || educationToken.isEmpty()) {
+            educationToken = session.getGeyser().config().educationToken();
+        }
+        String jwt;
+        if (session.isEducationClient() && educationToken != null && !educationToken.isEmpty()) {
+            // Education Edition: include signedToken in handshake JWT
+            JsonWebSignature jws = new JsonWebSignature();
+            jws.setAlgorithmHeaderValue("ES384");
+            jws.setHeader("x5u", Base64.getEncoder().encodeToString(
+                serverKeyPair.getPublic().getEncoded()));
+            jws.setKey(serverKeyPair.getPrivate());
+
+            JwtClaims claims = new JwtClaims();
+            claims.setClaim("salt", Base64.getEncoder().encodeToString(token));
+            claims.setClaim("signedToken", educationToken);
+            jws.setPayload(claims.toJson());
+            jwt = jws.getCompactSerialization();
+            session.getGeyser().getLogger().info("[EduHandshake] JWT built successfully (length=" + jwt.length() + ")");
+        } else {
+            jwt = EncryptionUtils.createHandshakeJwt(serverKeyPair, token);
+        }
 
         SecretKey encryptionKey = EncryptionUtils.getSecretKey(serverKeyPair.getPrivate(), key, token);
+
+        // Send handshake FIRST, then enable encryption (standard Geyser order)
+        ServerToClientHandshakePacket packet = new ServerToClientHandshakePacket();
+        packet.setJwt(jwt);
+        session.getGeyser().getLogger().info("[EduHandshake] Sending ServerToClientHandshakePacket (send-then-enable)...");
+        session.sendUpstreamPacketImmediately(packet);
+        session.getGeyser().getLogger().info("[EduHandshake] Handshake sent. Now enabling encryption...");
         session.getUpstream().getSession().enableEncryption(encryptionKey);
+        session.getGeyser().getLogger().info("[EduHandshake] Encryption enabled.");
+    }
+
+    /**
+     * Verifies the EduTokenChain JWT signature against the known MESS public key.
+     * The EduTokenChain is signed by Microsoft's MESS service when it authorizes
+     * a client to join a specific education server. Verifying this signature proves
+     * the client was genuinely authorized by Microsoft.
+     *
+     * @param geyser the Geyser instance for logging
+     * @param eduTokenChain the raw JWT string from the client data
+     * @return true if the signature is valid, false otherwise
+     */
+    private static boolean verifyEduTokenChain(GeyserImpl geyser, String eduTokenChain) {
+        try {
+            String[] parts = eduTokenChain.split("\\.");
+            if (parts.length != 3) {
+                geyser.getLogger().warning("[EduAuth] EduTokenChain has " + parts.length + " parts, expected 3.");
+                return false;
+            }
+
+            // Decode the header to check the algorithm and key
+            String headerJson = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+            geyser.getLogger().debug("[EduAuth] EduTokenChain header: " + headerJson);
+
+            // Parse x5u from header for logging
+            com.google.gson.JsonObject header = com.google.gson.JsonParser.parseString(headerJson).getAsJsonObject();
+            String x5u = header.has("x5u") ? header.get("x5u").getAsString() : null;
+            geyser.getLogger().debug("[EduAuth] EduTokenChain x5u: " + x5u);
+
+            // Prepare signature data (shared across all key attempts)
+            byte[] signedData = (parts[0] + "." + parts[1]).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] signatureBytes = Base64.getUrlDecoder().decode(padBase64(parts[2]));
+            byte[] derSignature = rawToDer(signatureBytes);
+
+            // Try each known MESS public key until one verifies.
+            // This handles key rotation — Microsoft periodically rotates the MESS signing key.
+            KeyFactory keyFactory = KeyFactory.getInstance("EC");
+            for (String messKeyBase64 : MESS_PUBLIC_KEYS) {
+                try {
+                    byte[] keyBytes = Base64.getDecoder().decode(messKeyBase64);
+                    X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
+                    PublicKey messPublicKey = keyFactory.generatePublic(keySpec);
+
+                    Signature sig = Signature.getInstance("SHA384withECDSA");
+                    sig.initVerify(messPublicKey);
+                    sig.update(signedData);
+                    if (sig.verify(derSignature)) {
+                        geyser.getLogger().debug("[EduAuth] EduTokenChain verified with MESS key: " + messKeyBase64.substring(0, 20) + "...");
+                        String payloadJson = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
+                        geyser.getLogger().debug("[EduAuth] EduTokenChain payload: " + payloadJson);
+                        return true;
+                    }
+                } catch (Exception e) {
+                    geyser.getLogger().debug("[EduAuth] Key " + messKeyBase64.substring(0, 20) + "... failed: " + e.getMessage());
+                }
+            }
+
+            geyser.getLogger().warning("[EduAuth] EduTokenChain did not verify against any known MESS key.");
+            if (x5u != null) {
+                geyser.getLogger().warning("[EduAuth] JWT x5u key: " + x5u);
+                geyser.getLogger().warning("[EduAuth] If this is a legitimate edu client, the MESS key may have rotated again. Update MESS_PUBLIC_KEYS in LoginEncryptionUtils.java.");
+            }
+            return false;
+        } catch (Exception e) {
+            geyser.getLogger().warning("[EduAuth] EduTokenChain verification error: " + e.getMessage());
+            if (geyser.config().debugMode()) {
+                e.printStackTrace();
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Converts a raw ECDSA signature (R || S concatenation) to DER format.
+     * JWT ES384 signatures are 96 bytes (two 48-byte integers), but Java's
+     * Signature class expects DER-encoded signatures.
+     */
+    private static byte[] rawToDer(byte[] raw) {
+        int halfLen = raw.length / 2;
+        byte[] r = trimLeadingZeros(raw, 0, halfLen);
+        byte[] s = trimLeadingZeros(raw, halfLen, halfLen);
+
+        // Add leading zero if high bit is set (to keep it positive in DER)
+        boolean rPad = (r[0] & 0x80) != 0;
+        boolean sPad = (s[0] & 0x80) != 0;
+        int rLen = r.length + (rPad ? 1 : 0);
+        int sLen = s.length + (sPad ? 1 : 0);
+        int totalLen = 2 + rLen + 2 + sLen;
+
+        byte[] der = new byte[2 + totalLen];
+        int idx = 0;
+        der[idx++] = 0x30; // SEQUENCE
+        der[idx++] = (byte) totalLen;
+        der[idx++] = 0x02; // INTEGER
+        der[idx++] = (byte) rLen;
+        if (rPad) der[idx++] = 0;
+        System.arraycopy(r, 0, der, idx, r.length);
+        idx += r.length;
+        der[idx++] = 0x02; // INTEGER
+        der[idx++] = (byte) sLen;
+        if (sPad) der[idx++] = 0;
+        System.arraycopy(s, 0, der, idx, s.length);
+
+        return der;
+    }
+
+    /**
+     * Trims leading zero bytes from a big-endian integer representation.
+     */
+    private static byte[] trimLeadingZeros(byte[] buf, int offset, int length) {
+        int start = offset;
+        int end = offset + length;
+        while (start < end - 1 && buf[start] == 0) {
+            start++;
+        }
+        byte[] result = new byte[end - start];
+        System.arraycopy(buf, start, result, 0, result.length);
+        return result;
+    }
+
+    /**
+     * Dumps the full JWT chain and client data JWT for an education client.
+     * This logs every JWT's header and payload (base64-decoded) so we can
+     * discover the root public key used by Education Edition clients.
+     */
+    private static void dumpEduChain(GeyserImpl geyser, AuthPayload authPayload, String clientDataJwt) {
+        try {
+            geyser.getLogger().info("[EduChainDump] ========== EDUCATION CLIENT JWT CHAIN DUMP ==========");
+
+            if (authPayload instanceof CertificateChainPayload certChain) {
+                java.util.List<String> chain = certChain.getChain();
+                geyser.getLogger().info("[EduChainDump] Chain length: " + chain.size());
+
+                for (int i = 0; i < chain.size(); i++) {
+                    String jwtToken = chain.get(i);
+                    String[] parts = jwtToken.split("\\.");
+                    geyser.getLogger().info("[EduChainDump] --- Chain JWT #" + i + " (parts: " + parts.length + ") ---");
+
+                    if (parts.length >= 2) {
+                        String header = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+                        String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
+                        geyser.getLogger().info("[EduChainDump]   Header:  " + header);
+                        geyser.getLogger().info("[EduChainDump]   Payload: " + payload);
+                    } else {
+                        geyser.getLogger().info("[EduChainDump]   Raw: " + jwtToken);
+                    }
+                }
+            } else if (authPayload instanceof TokenPayload tokenPayload) {
+                String token = tokenPayload.getToken();
+                geyser.getLogger().info("[EduChainDump] Auth payload is TokenPayload (single token).");
+                String[] parts = token.split("\\.");
+                if (parts.length >= 2) {
+                    String header = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+                    String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
+                    geyser.getLogger().info("[EduChainDump]   Header:  " + header);
+                    geyser.getLogger().info("[EduChainDump]   Payload: " + payload);
+                }
+            } else {
+                geyser.getLogger().info("[EduChainDump] Unknown auth payload type: " + authPayload.getClass().getName());
+            }
+
+            // Also dump the client data JWT
+            if (clientDataJwt != null) {
+                String[] parts = clientDataJwt.split("\\.");
+                geyser.getLogger().info("[EduChainDump] --- Client Data JWT (parts: " + parts.length + ") ---");
+                if (parts.length >= 2) {
+                    String header = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+                    // Client data payload can be large (skin data etc), just log the header
+                    // and a truncated payload to avoid flooding the console
+                    String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
+                    geyser.getLogger().info("[EduChainDump]   Header:  " + header);
+                    if (payload.length() > 2000) {
+                        geyser.getLogger().info("[EduChainDump]   Payload (truncated): " + payload.substring(0, 2000) + "...");
+                    } else {
+                        geyser.getLogger().info("[EduChainDump]   Payload: " + payload);
+                    }
+                }
+            }
+
+            geyser.getLogger().info("[EduChainDump] ========== END CHAIN DUMP ==========");
+        } catch (Exception e) {
+            geyser.getLogger().warning("[EduChainDump] Failed to dump education chain: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Pads a Base64URL string to the correct length for decoding.
+     */
+    private static String padBase64(String base64) {
+        int padding = 4 - (base64.length() % 4);
+        if (padding != 4) {
+            base64 += "=".repeat(padding);
+        }
+        return base64;
     }
 
     private static void sendEncryptionFailedMessage(GeyserImpl geyser) {

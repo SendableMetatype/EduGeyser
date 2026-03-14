@@ -81,6 +81,7 @@ import org.geysermc.geyser.extension.GeyserExtensionManager;
 import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
+import org.geysermc.geyser.network.EducationAuthManager;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -169,6 +170,8 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
     private ScheduledExecutorService scheduledThread;
 
     private GeyserServer geyserServer;
+    @Getter
+    private EducationAuthManager educationAuthManager;
     private final GeyserBootstrap bootstrap;
 
     private final GeyserEventBus eventBus;
@@ -505,6 +508,10 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             }
         }
 
+        // Initialize Education Edition auth manager
+        this.educationAuthManager = new EducationAuthManager();
+        this.educationAuthManager.initialize(this);
+
         MetricsPlatform metricsPlatform = bootstrap.createMetricsPlatform();
         if (metricsPlatform != null && metricsPlatform.enabled()) {
             metrics = new MetricsBase(
@@ -745,6 +752,7 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             bootstrap.getGeyserLogger().info(GeyserLocale.getLocaleStringLog("geyser.core.shutdown.kick.done"));
         }
 
+        runIfNonNull(educationAuthManager, EducationAuthManager::shutdown);
         runIfNonNull(scheduledThread, ScheduledExecutorService::shutdown);
         runIfNonNull(geyserServer, GeyserServer::shutdown);
         runIfNonNull(skinUploader, FloodgateSkinUploader::close);
