@@ -8,7 +8,8 @@ EduGeyser adds Education Edition authentication, custom packet handling, and ses
 
 ## Documentation
 
-See the [Master Documentation](master-documentation.md) for full technical details. Setup guide coming soon.
+- **[Setup Guide](SETUP-GUIDE.md)** — How to install and configure EduGeyser
+- [Master Documentation](edugeyser-master-documentation.md) — Full technical details
 
 ## Todo
 
