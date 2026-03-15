@@ -6,9 +6,9 @@ A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables Minecraft Educa
 
 EduGeyser adds Education Edition authentication, custom packet handling, and session management on top of Geyser's existing Bedrock-to-Java bridge. It works alongside [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate) to handle edu player identity and authentication.
 
-## Status
+## Documentation
 
-This project is in active development. Full documentation and setup instructions are coming soon.
+See the [Master Documentation](master-documentation.md) for full technical details. Setup guide coming soon.
 
 ## Downloads
 
