@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Join Minecraft Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #2d2d2d; color: white; }
+        .container { text-align: center; }
+        h1 { margin-bottom: 30px; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 14px; color: #ccc; }
+        input {
+            padding: 12px 16px;
+            font-size: 18px;
+            border: 2px solid #555;
+            border-radius: 8px;
+            background: #3a3a3a;
+            color: white;
+            width: 280px;
+            text-align: center;
+            outline: none;
+        }
+        input:focus { border-color: #4CAF50; }
+        input::placeholder { color: #777; }
+        .join-btn {
+            display: inline-block;
+            padding: 16px 48px;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            font-size: 22px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .join-btn:hover { background: #45a049; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 10; }
+        .overlay.active { display: flex; }
+        .popup { background: #3a3a3a; border-radius: 12px; padding: 30px 40px; text-align: center; max-width: 400px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+        .popup h2 { margin-top: 0; font-size: 20px; }
+        .popup p { color: #ccc; font-size: 15px; line-height: 1.5; }
+        .popup .close-btn { margin-top: 15px; padding: 10px 30px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        .popup .close-btn:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Join a Minecraft Server</h1>
+        <div class="input-group">
+            <label for="ip">Server IP</label>
+            <input type="text" id="ip" placeholder="e.g. play.example.com" />
+        </div>
+        <div class="input-group">
+            <label for="port">Port (optional)</label>
+            <input type="text" id="port" placeholder="default: 19132" />
+        </div>
+        <button class="join-btn" onclick="joinServer()">Click to Join</button>
+    </div>
+    <div class="overlay" id="popup">
+        <div class="popup">
+            <h2>Launching Minecraft...</h2>
+            <p>Minecraft should open automatically. If it doesn't, please open Minecraft manually and connect to the server.</p>
+            <button class="close-btn" onclick="document.getElementById('popup').classList.remove('active')">OK</button>
+        </div>
+    </div>
+    <script>
+        function joinServer() {
+            const ip = document.getElementById('ip').value.trim();
+            const port = document.getElementById('port').value.trim();
+            if (!ip) { alert('Please enter a server IP.'); return; }
+            let url = 'minecraftedu://connect/?serverUrl=' + encodeURIComponent(ip);
+            if (port) { url += '&serverPort=' + encodeURIComponent(port); }
+            window.location.href = url;
+            document.getElementById('popup').classList.add('active');
+        }
+    </script>
+</body>
+</html>
