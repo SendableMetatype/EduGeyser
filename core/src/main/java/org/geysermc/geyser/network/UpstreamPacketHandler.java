@@ -215,9 +215,19 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
             return PacketSignal.HANDLED;
         }
 
-        if (geyser.getSessionManager().isXuidAlreadyPending(session.xuid()) || geyser.getSessionManager().sessionByXuid(session.xuid()) != null) {
-            session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
-            return PacketSignal.HANDLED;
+        // Education clients without Xbox accounts use placeholder XUID "0", so the XUID-based
+        // duplicate check would incorrectly reject all edu players after the first one.
+        // Edu clients are instead checked by tenant ID + username combination.
+        if (session.isEducationClient()) {
+            if (geyser.getSessionManager().isEducationPlayerAlreadyConnected(session.getEducationTenantId(), session.bedrockUsername())) {
+                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
+                return PacketSignal.HANDLED;
+            }
+        } else {
+            if (geyser.getSessionManager().isXuidAlreadyPending(session.xuid()) || geyser.getSessionManager().sessionByXuid(session.xuid()) != null) {
+                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
+                return PacketSignal.HANDLED;
+            }
         }
 
         geyser.getSessionManager().addPendingSession(session);
@@ -225,6 +235,7 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         // Fire SessionInitializeEvent here as we now know the client data
         geyser.eventBus().fire(new SessionInitializeEvent(session));
 
+        geyser.getLogger().debug("[EduHandshake] Sending PlayStatusPacket LOGIN_SUCCESS");
         PlayStatusPacket playStatus = new PlayStatusPacket();
         playStatus.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
         session.sendUpstreamPacket(playStatus);
@@ -246,6 +257,8 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         resourcePacksInfo.setWorldTemplateId(UUID.randomUUID());
         resourcePacksInfo.setWorldTemplateVersion("*");
 
+        geyser.getLogger().debug("[EduHandshake] Sending ResourcePacksInfoPacket (packs={}, forced={})",
+            resourcePacksInfo.getResourcePackInfos().size(), resourcePacksInfo.isForcedToAccept());
         session.sendUpstreamPacket(resourcePacksInfo);
 
         GeyserLocale.loadGeyserLocale(session.locale());
@@ -254,6 +267,7 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
 
     @Override
     public PacketSignal handle(ResourcePackClientResponsePacket packet) {
+        geyser.getLogger().debug("[EduHandshake] Received ResourcePackClientResponsePacket, status={}", packet.getStatus());
         if (session.getUpstream().isClosed() || session.isClosed()) {
             return PacketSignal.HANDLED;
         }
@@ -269,7 +283,6 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
                 if (geyser.config().java().authType() != AuthType.ONLINE) {
                     session.authenticate(session.getAuthData().name());
                 } else if (!couldLoginUserByName(session.getAuthData().name())) {
-                    // We must spawn the white world
                     session.connect();
                 }
                 geyser.getLogger().info(GeyserLocale.getLocaleStringLog("geyser.network.connect", session.getAuthData().name() +

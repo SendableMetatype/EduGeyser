@@ -81,6 +81,7 @@ import org.geysermc.geyser.extension.GeyserExtensionManager;
 import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
+import org.geysermc.geyser.network.EducationAuthManager;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -103,6 +104,7 @@ import org.geysermc.geyser.translator.text.MessageTranslator;
 import org.geysermc.geyser.util.AssetUtils;
 import org.geysermc.geyser.util.CodeOfConductManager;
 import org.geysermc.geyser.util.JsonUtils;
+import org.geysermc.geyser.util.LoginEncryptionUtils;
 import org.geysermc.geyser.util.NewsHandler;
 import org.geysermc.geyser.util.VersionCheckUtils;
 import org.geysermc.geyser.util.WebUtils;
@@ -169,6 +171,14 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
     private ScheduledExecutorService scheduledThread;
 
     private GeyserServer geyserServer;
+    @Getter
+    private EducationAuthManager educationAuthManager;
+
+    /**
+     * Maps tenant ID to server token (JWT signedToken value) for Education Edition multi-tenancy.
+     * Populated on startup from MESS registration and/or config server-tokens list.
+     */
+    private final Map<String, String> tenantTokenPool = new ConcurrentHashMap<>();
     private final GeyserBootstrap bootstrap;
 
     private final GeyserEventBus eventBus;
@@ -505,6 +515,33 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             }
         }
 
+        // Initialize Education Edition auth manager
+        this.educationAuthManager = new EducationAuthManager();
+        String tenancyMode = config.eduTenancyMode();
+        if (!"standalone".equalsIgnoreCase(tenancyMode)) {
+            // Official and hybrid modes use MESS registration
+            this.educationAuthManager.initialize(this);
+        } else {
+            logger.debug("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
+        }
+
+        // Load additional server tokens from config (hybrid + standalone modes)
+        if (!"official".equalsIgnoreCase(tenancyMode)) {
+            List<String> configTokens = config.eduServerTokens();
+            if (configTokens != null && !configTokens.isEmpty()) {
+                logger.debug("[EduTenancy] Loading {} server token(s) from config", configTokens.size());
+                for (String token : configTokens) {
+                    if (token != null && !token.isBlank()) {
+                        LoginEncryptionUtils.registerServerTokenFromConfig(this, token.trim(), "config edu-server-tokens");
+                    }
+                }
+            } else if ("standalone".equalsIgnoreCase(tenancyMode)) {
+                logger.warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
+            }
+        }
+
+        logger.debug("[EduTenancy] Tenancy mode: {}, registered tenants: {}", tenancyMode, LoginEncryptionUtils.getRegisteredTenantCount());
+
         MetricsPlatform metricsPlatform = bootstrap.createMetricsPlatform();
         if (metricsPlatform != null && metricsPlatform.enabled()) {
             metrics = new MetricsBase(
@@ -745,6 +782,7 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             bootstrap.getGeyserLogger().info(GeyserLocale.getLocaleStringLog("geyser.core.shutdown.kick.done"));
         }
 
+        runIfNonNull(educationAuthManager, EducationAuthManager::shutdown);
         runIfNonNull(scheduledThread, ScheduledExecutorService::shutdown);
         runIfNonNull(geyserServer, GeyserServer::shutdown);
         runIfNonNull(skinUploader, FloodgateSkinUploader::close);

@@ -115,6 +115,28 @@ public final class SessionManager {
         return atomicInteger == null ? 1 : atomicInteger.get();
     }
 
+    /**
+     * Checks if an education client with the same tenant ID and username is already pending or active.
+     * Used instead of XUID-based checks for edu clients, since they share the placeholder XUID "0".
+     */
+    public boolean isEducationPlayerAlreadyConnected(String tenantId, String username) {
+        for (GeyserSession session : pendingSessions) {
+            if (session.isEducationClient()
+                    && Objects.equals(session.getEducationTenantId(), tenantId)
+                    && Objects.equals(session.bedrockUsername(), username)) {
+                return true;
+            }
+        }
+        for (GeyserSession session : sessions.values()) {
+            if (session.isEducationClient()
+                    && Objects.equals(session.getEducationTenantId(), tenantId)
+                    && Objects.equals(session.bedrockUsername(), username)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isXuidAlreadyPending(String xuid) {
         for (GeyserSession session : pendingSessions) {
             if (session.xuid().equals(xuid)) {
