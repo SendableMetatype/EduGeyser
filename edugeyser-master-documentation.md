@@ -77,7 +77,7 @@
 **Appendices:**
 - [Appendix A: Microsoft 365 Education Tenant System (Detailed)](#appendix-a-microsoft-365-education-tenant-system-detailed)
 - [Appendix B: Education Edition File Locations](#appendix-b-education-edition-file-locations)
-- [Appendix C: Binary Analysis Reference (Linux Server)](#appendix-c-binary-analysis-reference-linux-server)
+- [Appendix C: Binary Analysis Reference (Windows Client — Disconnect Investigation)](#appendix-c-binary-analysis-reference-windows-client--disconnect-investigation)
 - [Appendix D: Geyser Build System](#appendix-d-geyser-build-system)
 - [Appendix E: Session Lifecycle for Education Clients](#appendix-e-session-lifecycle-for-education-clients)
 - [Appendix F: Geyser Internals (Netty/RakNet Architecture)](#appendix-f-geyser-internals-nettyraknet-architecture)
@@ -500,9 +500,9 @@ Components:
 
 **Scope:** The serverToken is scoped to a tenant. A token from tenant A will be rejected by clients from tenant B. There is no way to create a cross-tenant token — the P2P `/host` endpoint always generates a token scoped to the calling user's tenant.
 
-This means: for school students to connect, the serverToken **must** come from the school's tenant. A teacher at the school captures the Bearer token (Method 1), which is the simplest path that doesn't require admin access.
+This means: for school students to connect, the serverToken **must** come from the school's tenant. Any student or teacher at the school can provide the Bearer token (Method 1), or a Global Admin can use the automated MESS integration (Method 2).
 
-**Token refresh:** The dedicated server API's `server/refresh_token` endpoint (see Section 38) allows indefinite renewal of a still-valid server token without re-authenticating with Entra. Only the initial setup or full token expiration requires Entra auth.
+**Token refresh:** Token refresh is done by refreshing the Entra access token via standard OAuth refresh_token grant, then calling `/server/fetch_token` with the new access token. Note: the MESS `/server/token_refresh` endpoint is documented but returns 404 in practice — see Section 32, issue #7.
 
 ### Two Separate Token Services
 
@@ -512,22 +512,26 @@ Two separate Microsoft services handle Education server tokens with different ca
 |---------|-----------------------------------|------------------------------------------|
 | Token type | P2P serverToken | Dedicated serverToken |
 | Registration | Implicit (via /host) | Explicit (via /register) |
-| Server list | No | Yes |
+| Server list | No | Yes (server appears in Education client) |
 | Keepalive | /update with passcode | /server/update with health |
-| Token refresh | None (re-call /host) | /server/refresh_token |
+| Token refresh | None (re-call /host) | Via Entra refresh + /server/fetch_token |
 | Join code | Yes (passcode in /host response) | No (uses server list) |
-| Admin required | No | Yes (for tenant setup) |
+| Admin required | No (any M365 Education user) | Yes (Global Admin for initial tenant setup) |
 | Cross-tenant | Limited (tenant-scoped token) | Full (with invite system) |
 
 See Section 38 for the complete MESS API reference.
 
-### Three Methods to Obtain a Token
+### Four Methods to Obtain a Token
 
-All three produce the same `tenantId|...|timestamp|signature` format. The client validates the format, not the source.
+All methods produce a `tenantId|...|timestamp|signature` format token. The client validates the format, not the source.
 
-#### Method 1: P2P Hosting Capture (Any Teacher, No Admin Required)
+#### Method 1: P2P Hosting Capture (Any M365 Education User, No Admin Required)
 
-**Step 1: Capture Bearer token via Fiddler**
+Any user with a Microsoft 365 Education license (student or teacher) can generate a P2P serverToken by hosting a world. The token is scoped to their tenant. This is the simplest method and requires no admin access. Students connect via the `minecraftedu://connect` URI scheme — the server will NOT appear in the Education server list.
+
+**Automated approach: Token Extractor Tool** — see Section 40. The user runs the tool, hosts a world for one second, and the tool captures and exchanges the token automatically.
+
+**Manual approach: Fiddler Capture**
 
 The Education client must be exempted for Fiddler interception:
 ```
@@ -577,7 +581,7 @@ Full decoded Bearer JWT example:
 
 Bearer tokens expire after approximately 75-90 minutes.
 
-**Step 2: Exchange for serverToken**
+**Exchange Bearer for serverToken:**
 
 ```powershell
 $token = "YOUR_BEARER_TOKEN"
@@ -591,11 +595,54 @@ The full response includes:
 - `serverToken`: the token for the handshake JWT
 - `passcode`: join code as comma-separated icon indices (e.g., `"0,13,16,12"`)
 
-The serverToken is valid for approximately 2 weeks based on the embedded timestamp.
+The serverToken is valid for approximately 2 weeks based on the embedded timestamp. This method produces a **P2P token** — the server will NOT appear in the Education client's server list.
+
+**Scope:** The serverToken is scoped to the calling user's tenant. For school students to connect, the token **must** come from someone in the school's M365 tenant (any student or teacher at the school).
 
 > **OUTDATED ENDPOINT:** The original endpoint bundabrg used (`meeservices.azurewebsites.net/v2/signin`) no longer exists — DNS resolution fails. `discovery.minecrafteduservices.com/host` is the current equivalent. The OAuth2 OOB redirect URI (`urn:ietf:wg:oauth:2.0:oob`) also no longer works — Microsoft returns `AADSTS50011`. Obtain Bearer tokens via Fiddler capture instead.
 
-#### Method 2: Admin Portal (Global Admin Required)
+#### Method 2: EducationAuthManager — Automatic MESS Integration (Recommended)
+
+This is the built-in system in the Geyser fork that fully automates token acquisition, server registration, and lifecycle management using Microsoft's official MESS dedicated server API. The server appears in Education Edition's in-app server list — students can join without knowing the IP address.
+
+**Requirements:**
+- A Microsoft 365 Education tenant where you are **Global Admin** (see Section 48 for how to obtain a commercial test tenant for $36/year)
+- The Dedicated Server feature must be enabled in the tenant (via the admin portal at `education.minecraft.net/teachertools/en_US/dedicatedservers/`)
+
+**How it works:**
+
+1. Set `edu-server-name` in Geyser's `config.yml` (e.g., `edu-server-name: "My Java Server"`)
+2. On first startup, Geyser initiates an **OAuth device code flow** — it displays a URL and code in the console
+3. The admin opens the URL in a browser, enters the code, and signs in with their Global Admin M365 account
+4. Geyser receives an **Entra access token** and **refresh token**
+5. Geyser calls `POST /server/register` on `dedicatedserver.minecrafteduservices.com` → receives a **serverId** and **serverToken**
+6. Geyser calls `POST /server/host` to register the server's IP:port with MESS → the server appears in Education Edition's server list
+7. Geyser attempts `POST /tooling/edit_server_info` to enable the server, set its name, and enable broadcast (best-effort — may return 401, in which case manual portal setup is needed)
+8. **Every 10 seconds:** Geyser sends `POST /server/update` with player count and health status (keeps the server showing as "online")
+9. **Every 30 minutes:** Geyser refreshes the Entra access token and fetches a new server token (automatic, no user interaction)
+10. **On shutdown:** Geyser calls `POST /server/dehost` to immediately remove the server from the list
+
+**After first setup:** All tokens are persisted to `edu_session.json`. On subsequent restarts, Geyser silently refreshes tokens without requiring a new device code flow. The admin never needs to interact again unless the session expires or is reset.
+
+**Configuration:**
+```yaml
+edu-server-name: "My Java Server"     # Setting this enables the system
+edu-server-id: ""                      # Auto-filled on first registration
+edu-server-ip: ""                      # Auto-detected or set manually
+edu-max-players: 40                    # Shown in server list
+```
+
+**What students see:** The server appears in their Education Edition server list with the configured name, player count, and health status. They click "Play" and connect — no IP address or URI needed.
+
+**Cross-tenant:** With `crossTenantAllowed` enabled on the server registration (via admin portal), students from OTHER M365 tenants can also join. The owning tenant's admin enabling cross-tenant is sufficient — the guest tenant's admin does NOT need to enable anything (see Section 20, Cross-Tenant One-Sided Bypass).
+
+**Management:** `/geyser edu status`, `/geyser edu players`, `/geyser edu reset`, `/geyser edu register` (see Section 52).
+
+**Note on conditional access:** Some school tenants have conditional access policies that block the device code flow. In those cases, use Method 1 (P2P capture) with the Token Extractor Tool instead, and set the token manually via `education-token` in config.
+
+See Section 51 for complete EducationAuthManager implementation details, and Section 38 for the full MESS API reference.
+
+#### Method 3: Admin Portal (Manual, Global Admin Required)
 
 The Dedicated Server Admin Portal at `education.minecraft.net/teachertools/en_US/dedicatedservers/` allows Global Admins to register servers.
 
@@ -614,9 +661,11 @@ The response is a signed JWT whose payload contains:
 }
 ```
 
-The portal also generates a `PropsDS` zip containing a pre-configured `server.properties` for download.
+The token from the admin portal can be pasted into `education-token` in Geyser's config as a manual alternative to Method 2's automatic system.
 
-#### Method 3: Dedicated Server Binary (Global Admin Required for Tenant Enable)
+#### Method 4: Dedicated Server Binary (Reference Only)
+
+The official Education dedicated server binary (`bedrock_server_edu` / `bedrock_server.exe`) authenticates via the same Entra device code flow that Method 2 automates. This method is documented for reference — understanding how the official binary works is what enabled Method 2's implementation.
 
 The server binary authenticates via Entra device code flow:
 1. POST to `https://login.microsoftonline.com/{tenantId}/organizations/oauth2/v2.0/devicecode`
@@ -1449,7 +1498,7 @@ The binary was considered for LD_PRELOAD hooking (intercepting libcurl calls to 
 
 The serverToken is scoped to a tenant. A token from tenant A will be rejected by clients from tenant B. There is no way to create a cross-tenant token — the P2P `/host` endpoint always generates a token scoped to the calling user's tenant.
 
-This means: for school students to connect, the serverToken **must** come from the school's tenant. A teacher at the school captures the Bearer token (Method 1), which is the simplest path that doesn't require admin access.
+This means: for school students to connect via P2P tokens, the token **must** come from someone in the school's M365 tenant (any student or teacher). Alternatively, the EducationAuthManager (Method 2 in Section 6) uses the dedicated server API which supports cross-tenant access.
 
 ### Cross-Tenant One-Sided Bypass
 
@@ -2409,21 +2458,135 @@ Education-exclusive features (chemistry, NPCs, Code Builder, camera/portfolio, a
 
 ---
 
-## Appendix C: Binary Analysis Reference (Linux Server)
+## Appendix C: Binary Analysis Reference (Windows Client — Disconnect Investigation)
 
-Education client base address (for RVA calculations): `0x00007FF70B430000` (varies per launch due to ASLR)
+Windows Education client base address (for RVA calculations): `0x00007FF70B430000` (varies per launch due to ASLR)
 
-Key functions identified:
+### Key Loaded Modules
+
+| Module | Base Address | Size | Notes |
+|---|---|---|---|
+| minecraft.windows.exe | 0x00007FF70B430000 | ~159 MB | Main executable |
+| ntdll.dll | 0x00007FFA4DAA0000 | 2.4 MB | |
+| WS2_32.dll | 0x00007FFA4C2A0000 | 464 KB | Winsock2, closesocket at +0x10B10 |
+| libcef.dll | 0x00007FF970090000 | ~222 MB | Chromium Embedded Framework (HBUI) |
+| cohtml.WindowsDesktop.dll | 0x00007FF9F4EA0000 | 7.5 MB | Coherent HTML UI |
+| v8.dll | 0x00007FF9F32F0000 | 23.4 MB | Google V8 JavaScript engine |
+| python38.dll | 0x00007FF9F49D0000 | 4.9 MB | Embedded Python 3.8 (Code Builder) |
+| fmod64.dll | 0x00007FFA12960000 | 1.9 MB | Audio |
+| dbghelp.dll | 0x00007FFA3FBE0000 | 2.3 MB | Debug helper (stack capture) |
+| SecureEngineSDK64.dll | 0x0000000010000000 | 36 KB | Anti-tamper/DRM (fixed base, may interfere with hooking) |
+| libhpdf.dll | 0x00007FFA12890000 | 808 KB | PDF generation library |
+
+### Full Disconnect Call Chain (22 frames)
+
+Captured by SocketHook.dll IAT hook on `closesocket`:
+
+```
+closesocket(socket)
+ ├─ minecraft.windows.exe+0x5CBA49E    Frame 1     RakNetSocket2 - closesocket caller
+ ├─ minecraft.windows.exe+0x5CDF232    Frame 2     Socket cleanup orchestrator
+ ├─ minecraft.windows.exe+0x199554     Frame 3     Dispatch wrapper
+ ├─ minecraft.windows.exe+0x6D5DDCA    Frame 4     (unknown helper)
+ ├─ minecraft.windows.exe+0x5CBE957    Frame 5     Network layer (RakNet)
+ ├─ minecraft.windows.exe+0x28AF06E    Frame 6     Disconnect function body
+ │       mov edx, 0x29  (reason = "Disconnected")
+ ├─ minecraft.windows.exe+0x28BA6E6    Frame 7     Connection state handler
+ │       processes shared_ptr, hash 0xa56a090e
+ ├─ minecraft.windows.exe+0x29E3C27    Frame 8     Tick / flag checker <<<
+ │       reads: this→0xD0→subObj→0x40→flagObj[0]
+ │       if non-zero: calls subObj vtable[0x58] → disconnect
+ ├─ minecraft.windows.exe+0xADFBB0     Frame 9     Outer tick ([rbx+0x414] flag)
+ ├─ minecraft.windows.exe+0xD05BE7     Frame 10    Game loop dispatch
+ ├─ minecraft.windows.exe+0xAC51C8     Frame 11    Scheduler
+ ├─ minecraft.windows.exe+0xAF36FF     Frame 12    Task runner
+ ├─ minecraft.windows.exe+0xAC4F89     Frame 13    Event loop
+ ├─ minecraft.windows.exe+0xAC650F     Frame 14    Event loop
+ ├─ minecraft.windows.exe+0xAC4658     Frame 15    Event loop
+ ├─ minecraft.windows.exe+0x1FA6563    Frame 16    App tick
+ ├─ minecraft.windows.exe+0x2D592E     Frame 17    Main loop
+ ├─ minecraft.windows.exe+0x2D6020     Frame 18    Main loop
+ ├─ minecraft.windows.exe+0x2D61C4     Frame 19    Main loop
+ ├─ minecraft.windows.exe+0x6D5E842    Frame 20    Thread start
+ ├─ KERNEL32.DLL+0x2E8D7               Frame 21    BaseThreadInitThunk
+ └─ ntdll.dll+0x8C48C                  Frame 22    RtlUserThreadStart
+```
+
+### Key Disconnect Functions
 
 | RVA | Purpose |
 |-----|---------|
-| `0x28AEFA0` | Disconnect function — hardcodes reason 0x29, calls virtual disconnect |
-| `0x29E3BA0` | Flag checker — reads `field_0xD0->field_0x40`, triggers disconnect if non-zero |
+| `0x28AEFA0` | Disconnect function — `mov edx, 0x29`, calls virtual disconnect through inner object vtable |
+| `0x29E3BA0` | Flag checker — triple pointer indirection: `this→0xD0→subObj→0x40→flagObj[0]`, if non-zero calls `subObj_vtable[0x58]` |
 | `0x29E3C11` | Disconnect branch — `cmp byte ptr [rax], bpl; je skip` |
-| `0x02935E40` | DisconnectFailReason enum registration function |
+| `0x29E3C14` | JE instruction — the conditional branch patched by DisconnectBypass DLLs |
+| `0x02935E40` | DisconnectFailReason enum registration function (entt meta reflection) |
 | `0xADF9C0` | Outer tick function with related status check at `[rbx + 0x414]` |
+| `0xB288E0` | Shared_ptr handler — processes handler with hash `0xa56a090e` |
 
-DisconnectFailReason enum: 129 total values. Value 41 (0x29) = "Disconnected" (generic).
+### Flag Checker Assembly (RVA 0x29E3BA0)
+
+```asm
+mov  [rsp+0x10], rbx
+mov  [rsp+0x18], rbp
+mov  [rsp+0x20], rsi
+push rdi
+...
+mov  rax, [rcx + 0xD0]        ; subObj = this->0xD0
+mov  rax, [rax + 0x40]        ; flagObj = subObj->0x40 (shared_ptr raw pointer)
+                               ; subObj+0x48 = shared_ptr control block ref count
+cmp  byte ptr [rax], bpl      ; check flagObj[0] (the disconnect flag)
+je   +0xDF                     ; skip disconnect if flag == 0
+...
+call [subObj_vtable + 0x58]    ; leads to 0x28AEFA0 → disconnect
+```
+
+### Flag Object Memory Dump
+
+```
+0x212FF7FC830: 01 00 00 00 00 00 00 00  (byte 0 = disconnect flag = TRUE)
+0x212FF7FC838: 00 00 00 00 00 00 08 00
+0x212FF7FC840: 70 65 72 73 6F 6E 61 5F  "persona_right_le"
+0x212FF7FC850: 67 00 ...                  "g\0"
+```
+
+### DisconnectFailReason Enum (Notable Values)
+
+136 total values (0-135), extracted from entt meta reflection at RVA `0x02935E40` and cross-referenced with gophertunnel Go library.
+
+| Value | Hex | Name | Notes |
+|---|---|---|---|
+| 0 | 0x00 | Unknown | |
+| 8 | 0x08 | VersionMismatch | |
+| 9 | 0x09 | SkinIssue | Potentially relevant |
+| 11 | 0x0B | EduLevelSettingsMissing | Education-specific |
+| 26 | 0x1A | InvalidPlatformSkin | Potentially relevant |
+| 31 | 0x1F | BannedSkin | |
+| 32 | 0x20 | Timeout | |
+| **41** | **0x29** | **Disconnected** | **Generic — this is what the client uses** |
+| 55 | 0x37 | Kicked | |
+| 90 | 0x5A | BadPacket | |
+| 131 | 0x83 | EditionMismatchVanillaToEdu | Education-specific |
+| 132 | 0x84 | EditionMismatchEduToVanilla | Education-specific |
+
+The fact that the code uses "Disconnected" (generic) rather than a specific reason like "SkinIssue" or "EduLevelSettingsMissing" confirms the disconnect is a catch-all from a general validation failure (the StartGamePacket deserialization error).
+
+### DebugView Observations
+
+During testing, DebugView captured:
+- `"SafetyServiceHelper didn't get a valid response from the safety service"` — observed during connection. Confirmed NOT the cause of the disconnect.
+- `"Opening level 'C:/Users/niels/AppData/Local/Temp/minecraftpe/blob_cache'"` — blob cache path
+
+### Education-Specific Disconnect Messaging
+
+The binary references `data/definitions/disconnection_errors/disconnection_error_messaging_edu.json` at RVA `0x07FEFC60` — a separate Education-specific disconnect messaging file alongside the standard `disconnection_error_messaging.json`.
+
+### UWP Sandbox Constraints for DLL Development
+
+- `CreateFileA` to arbitrary paths fails (AppContainer restrictions)
+- `GetTempPathA` returns a writable app-specific temp folder
+- `OutputDebugStringA` works (captured by Sysinternals DebugView run as admin)
+- LNK1104 occurs if DLL is still loaded from a previous injection — must kill the game first
 
 ---
 
