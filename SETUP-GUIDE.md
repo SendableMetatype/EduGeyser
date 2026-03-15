@@ -71,7 +71,7 @@ You need a `serverToken` from Microsoft that proves your server is authorized fo
 
 #### Option 1: Token Extractor Tool (Easiest)
 
-1. Download the [Token Extractor Tool](EduGeyser%20Token%20Extractor.exe) (Windows only, requires Administrator) — [source code](Token_Extractor.py)
+1. Download the [Token Extractor Tool](education-tools/EduGeyser%20Token%20Extractor.exe) (Windows only, requires Administrator) — [source code](education-tools/Token_Extractor.py)
 2. Run the tool as Administrator
 3. Open Minecraft Education Edition
 4. Open any world and click "Host" to start hosting
@@ -111,13 +111,13 @@ Start your server. You should see a log message confirming Education Edition sup
 
 You have two options — see [How Students Connect](#how-students-connect) for full details:
 
-1. **Resource pack (recommended):** Share the included `ServerButton.mcpack` with students. They open it, activate it, and get a permanent Servers button on their home screen where they can save your server.
+1. **Resource pack (recommended):** Share the included `education-tools/ServerButton.mcpack` with students. They open it, activate it, and get a permanent Servers button on their home screen where they can save your server.
 
 2. **Connection link (quick):** Share this link and students click it to connect instantly:
    ```
    minecraftedu://connect/?serverUrl=YOUR_SERVER_IP:19132
    ```
-   The included [`join-server.html`](join-server.html) page makes this easy — edit the IP and share the file.
+   The included [`join-server.html`](education-tools/join-server.html) page makes this easy — edit the IP and share the file.
 
 ### Token Renewal
 
@@ -273,7 +273,7 @@ The best way for students to connect is the included **EduGeyser Server List res
 - Familiar Bedrock-style UI — students who've used regular Minecraft will recognize it
 
 **Setup:**
-1. Share the [`ServerButton.mcpack`](ServerButton.mcpack) file with students (via Teams, Classroom, email, or a shared drive)
+1. Share the [`ServerButton.mcpack`](education-tools/ServerButton.mcpack) file with students (via Teams, Classroom, email, or a shared drive)
 2. Students open the file — Education Edition launches and installs the resource pack automatically
 3. Students go to **Settings → Global Resources** and activate the pack
 4. Back on the Play screen, a **Servers** button now appears
