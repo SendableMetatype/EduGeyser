@@ -10,6 +10,12 @@ EduGeyser adds Education Edition authentication, custom packet handling, and ses
 
 See the [Master Documentation](master-documentation.md) for full technical details. Setup guide coming soon.
 
+## Todo
+
+- [ ] Design multi-tenancy support system
+- [ ] Fix/update player auth system (MESS key rotation)
+- [ ] Find reliable method to detect tenancy IDs
+
 ## Downloads
 
 Pre-built jars are available on the [Releases](https://github.com/SendableMetatype/EduGeyser/releases) page.
