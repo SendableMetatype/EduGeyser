@@ -670,6 +670,14 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     private boolean educationClient = false;
 
     /**
+     * The tenant ID extracted from the EduTokenChain JWT payload.
+     * This is the real, cryptographically signed tenant ID. Do NOT use
+     * BedrockClientData.getTenantId() as it is always null for edu clients.
+     */
+    @Getter @Setter
+    private String educationTenantId = null;
+
+    /**
      * The op permission level set by the server
      */
     @Setter

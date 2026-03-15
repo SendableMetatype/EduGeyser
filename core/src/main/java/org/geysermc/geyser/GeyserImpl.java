@@ -82,6 +82,7 @@ import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
 import org.geysermc.geyser.network.EducationAuthManager;
+import org.geysermc.geyser.util.LoginEncryptionUtils;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -510,7 +511,30 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
 
         // Initialize Education Edition auth manager
         this.educationAuthManager = new EducationAuthManager();
-        this.educationAuthManager.initialize(this);
+        String tenancyMode = config.eduTenancyMode();
+        if (!"standalone".equalsIgnoreCase(tenancyMode)) {
+            // Official and hybrid modes use MESS registration
+            this.educationAuthManager.initialize(this);
+        } else {
+            logger.info("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
+        }
+
+        // Load additional server tokens from config (hybrid + standalone modes)
+        if (!"official".equalsIgnoreCase(tenancyMode)) {
+            java.util.List<String> configTokens = config.eduServerTokens();
+            if (configTokens != null && !configTokens.isEmpty()) {
+                logger.info("[EduTenancy] Loading " + configTokens.size() + " server token(s) from config...");
+                for (String token : configTokens) {
+                    if (token != null && !token.isBlank()) {
+                        LoginEncryptionUtils.registerServerTokenFromConfig(this, token.trim(), "config edu-server-tokens");
+                    }
+                }
+            } else if ("standalone".equalsIgnoreCase(tenancyMode)) {
+                logger.warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
+            }
+        }
+
+        logger.info("[EduTenancy] Tenancy mode: " + tenancyMode + ", registered tenants: " + LoginEncryptionUtils.getRegisteredTenantCount());
 
         MetricsPlatform metricsPlatform = bootstrap.createMetricsPlatform();
         if (metricsPlatform != null && metricsPlatform.enabled()) {

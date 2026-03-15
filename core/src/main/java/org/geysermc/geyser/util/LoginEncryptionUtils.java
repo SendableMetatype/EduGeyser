@@ -58,10 +58,87 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 public class LoginEncryptionUtils {
     private static boolean HAS_SENT_ENCRYPTION_MESSAGE = false;
+
+    /**
+     * Token pool: maps tenant ID to server token (JWT signedToken value).
+     * Populated on startup from:
+     * 1. EducationAuthManager (MESS-registered token) for official/hybrid modes
+     * 2. Config server-tokens list for hybrid/standalone modes
+     * Each server token JWT is decoded to extract its tenant ID automatically.
+     */
+    private static final Map<String, String> TENANT_TOKEN_POOL = new ConcurrentHashMap<>();
+
+    /**
+     * Register a server token with an already-known tenant ID.
+     */
+    public static void registerServerToken(GeyserImpl geyser, String serverToken, String tenantId, String source) {
+        if (tenantId == null || tenantId.isEmpty()) {
+            geyser.getLogger().warning("[EduTenancy] Cannot register token with null/empty tenant ID (source: " + source + ")");
+            return;
+        }
+        TENANT_TOKEN_POOL.put(tenantId, serverToken);
+        geyser.getLogger().info("[EduTenancy] Registered token for tenant " + tenantId + " (source: " + source + ")");
+    }
+
+    /**
+     * Register a server token from config. Accepts either the raw pipe-separated
+     * server token or a full MESS-format outer JWT. Extracts the tenant ID and
+     * inner server token automatically.
+     */
+    public static void registerServerTokenFromConfig(GeyserImpl geyser, String token, String source) {
+        // Try to extract tenant ID from the token
+        String tenantId = extractTenantIdFromServerToken(geyser, token);
+        if (tenantId != null) {
+            TENANT_TOKEN_POOL.put(tenantId, token);
+            geyser.getLogger().info("[EduTenancy] Registered token for tenant " + tenantId + " (source: " + source + ")");
+        } else {
+            geyser.getLogger().warning("[EduTenancy] Could not extract tenant ID from token (source: " + source + "). Token will not be usable for routing.");
+        }
+    }
+
+    /**
+     * Extract tenant ID from a server token.
+     * Server token format: tenantId|serverId|expiry|signature (pipe-separated).
+     * The tenant ID is always the first segment.
+     */
+    public static String extractTenantIdFromServerToken(GeyserImpl geyser, String serverToken) {
+        if (serverToken == null || serverToken.isEmpty()) {
+            return null;
+        }
+
+        String[] parts = serverToken.split("\\|");
+        if (parts.length >= 4) {
+            // Standard format: tenantId|serverId|expiry|signature
+            String tenantId = parts[0].trim();
+            if (!tenantId.isEmpty()) {
+                return tenantId;
+            }
+        }
+
+        geyser.getLogger().warning("[EduTenancy] Unexpected server token format (" + parts.length + " pipe segments). Cannot extract tenant ID.");
+        return null;
+    }
+
+    /**
+     * Look up the server token for a given tenant ID.
+     */
+    public static String getTokenForTenant(String tenantId) {
+        return TENANT_TOKEN_POOL.get(tenantId);
+    }
+
+    /**
+     * Get the number of registered tenant tokens (for diagnostics).
+     */
+    public static int getRegisteredTenantCount() {
+        return TENANT_TOKEN_POOL.size();
+    }
+
 
     /**
      * Known MESS (Minecraft Education Server Services) public keys used to sign EduTokenChain JWTs.
@@ -144,7 +221,10 @@ public class LoginEncryptionUtils {
                 EducationAuthManager eduAuth = geyser.getEducationAuthManager();
                 boolean eduSystemActive = eduAuth != null && eduAuth.isActive();
 
-                String tenantId = data.getTenantId() != null ? data.getTenantId() : null;
+                // Extract the REAL tenant ID from the EduTokenChain JWT payload.
+                // Do NOT use data.getTenantId() - it is always null for edu clients.
+                String tenantId = extractTenantIdFromEduTokenChain(geyser, data.getEduTokenChain());
+                session.setEducationTenantId(tenantId);
                 int adRole = data.getAdRole();
                 String roleName = switch (adRole) {
                     case 0 -> "student";
@@ -174,10 +254,8 @@ public class LoginEncryptionUtils {
                     geyser.getLogger().info("[EduAuth] Education client verified via EduTokenChain signature.");
                 }
 
-                if (geyser.config().eduLogTenant()) {
-                    geyser.getLogger().info("[EduAuth] Education client connected (TenantId: %s, Role: %s, ChainSignedByMojang: %s)"
-                            .formatted(tenantId != null ? tenantId : "unknown", roleName, result.signed()));
-                }
+                geyser.getLogger().info("[EduAuth] Education client connected (TenantId: %s, Role: %s, ChainSignedByMojang: %s)"
+                        .formatted(tenantId != null ? tenantId : "unknown", roleName, result.signed()));
 
                 if (data.getEduSessionToken() != null && !data.getEduSessionToken().isEmpty()) {
                     geyser.getLogger().debug("[EduAuth] Client has MESS session token (connected via server list).");
@@ -203,13 +281,7 @@ public class LoginEncryptionUtils {
                 }
             }
 
-            // For Education Edition clients with verified chains: use the real M365 display name
-            String displayName = extraData.displayName;
-            if (session.isEducationClient() && result.signed() && geyser.config().eduUseRealNames()) {
-                geyser.getLogger().debug("[EduAuth] Using verified M365 display name: " + displayName);
-            }
-
-            session.setAuthData(new AuthData(displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));
+            session.setAuthData(new AuthData(extraData.displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));
 
             try {
                 startEncryptionHandshake(session, identityPublicKey);
@@ -231,27 +303,61 @@ public class LoginEncryptionUtils {
         KeyPair serverKeyPair = EncryptionUtils.createKeyPair();
         byte[] token = EncryptionUtils.generateRandomToken();
 
-        // Resolve signedToken: prefer dynamic EducationAuthManager token, fall back to static config
-        EducationAuthManager eduAuth = session.getGeyser().getEducationAuthManager();
-        String educationToken = (eduAuth != null) ? eduAuth.getServerToken() : null;
-        if (educationToken == null || educationToken.isEmpty()) {
-            educationToken = session.getGeyser().config().educationToken();
-        }
         String jwt;
-        if (session.isEducationClient() && educationToken != null && !educationToken.isEmpty()) {
-            // Education Edition: include signedToken in handshake JWT
-            JsonWebSignature jws = new JsonWebSignature();
-            jws.setAlgorithmHeaderValue("ES384");
-            jws.setHeader("x5u", Base64.getEncoder().encodeToString(
-                serverKeyPair.getPublic().getEncoded()));
-            jws.setKey(serverKeyPair.getPrivate());
+        if (session.isEducationClient()) {
+            // Multi-tenancy token routing:
+            // 1. Try to find a token matching this client's tenant ID from the pool
+            // 2. Fall back to the EducationAuthManager's MESS-registered token (official/hybrid)
+            String educationToken = null;
+            String clientTenantId = session.getEducationTenantId();
 
-            JwtClaims claims = new JwtClaims();
-            claims.setClaim("salt", Base64.getEncoder().encodeToString(token));
-            claims.setClaim("signedToken", educationToken);
-            jws.setPayload(claims.toJson());
-            jwt = jws.getCompactSerialization();
-            session.getGeyser().getLogger().info("[EduHandshake] JWT built successfully (length=" + jwt.length() + ")");
+            if (clientTenantId != null && !clientTenantId.isEmpty()) {
+                educationToken = getTokenForTenant(clientTenantId);
+                if (educationToken != null) {
+                    session.getGeyser().getLogger().info("[EduTenancy] Matched token for tenant " + clientTenantId + " from pool");
+                }
+            }
+
+            // Fallback: EducationAuthManager (MESS-registered token)
+            if (educationToken == null) {
+                EducationAuthManager eduAuth = session.getGeyser().getEducationAuthManager();
+                if (eduAuth != null && eduAuth.getServerToken() != null && !eduAuth.getServerToken().isEmpty()) {
+                    educationToken = eduAuth.getServerToken();
+                    session.getGeyser().getLogger().debug("[EduTenancy] Using MESS-registered token (fallback)");
+                }
+            }
+
+            if (educationToken != null && !educationToken.isEmpty()) {
+                // Build the edu handshake JWT with signedToken claim
+                JsonWebSignature jws = new JsonWebSignature();
+                jws.setAlgorithmHeaderValue("ES384");
+                jws.setHeader("x5u", Base64.getEncoder().encodeToString(
+                    serverKeyPair.getPublic().getEncoded()));
+                jws.setKey(serverKeyPair.getPrivate());
+
+                JwtClaims claims = new JwtClaims();
+                claims.setClaim("salt", Base64.getEncoder().encodeToString(token));
+                claims.setClaim("signedToken", educationToken);
+                jws.setPayload(claims.toJson());
+                jwt = jws.getCompactSerialization();
+                session.getGeyser().getLogger().info("[EduHandshake] JWT built successfully (length=" + jwt.length() + ")");
+            } else {
+                // No token available for this client's tenant
+                String tenantInfo = (clientTenantId != null) ? clientTenantId : "unknown";
+                int poolSize = getRegisteredTenantCount();
+                session.getGeyser().getLogger().warning("[EduTenancy] No server token available for tenant: " + tenantInfo);
+
+                session.disconnect(
+                    "Education Edition Connection Failed\n\n" +
+                    "Your school (tenant: " + tenantInfo + ") is not configured on this server.\n\n" +
+                    "This server has " + poolSize + " tenant(s) registered.\n" +
+                    "Ask the server administrator to add your school's tenant to the server configuration.\n\n" +
+                    "If you are the admin, add a server-token for this tenant in the\n" +
+                    "edu-server-tokens list in config.yml, or register the server\n" +
+                    "in your school's Minecraft Education admin portal."
+                );
+                return;
+            }
         } else {
             jwt = EncryptionUtils.createHandshakeJwt(serverKeyPair, token);
         }
@@ -266,6 +372,51 @@ public class LoginEncryptionUtils {
         session.getGeyser().getLogger().info("[EduHandshake] Handshake sent. Now enabling encryption...");
         session.getUpstream().getSession().enableEncryption(encryptionKey);
         session.getGeyser().getLogger().info("[EduHandshake] Encryption enabled.");
+    }
+
+    /**
+     * Extract the tenant ID from an EduTokenChain JWT.
+     * The EduTokenChain payload contains a "chain" field formatted as:
+     * "tenantId|signature|expiry|nonce" - we split by pipe and take index 0.
+     *
+     * IMPORTANT: Do NOT use BedrockClientData.getTenantId() - it is always null
+     * for Education Edition clients. This is the only reliable source.
+     *
+     * @param eduTokenChain the raw EduTokenChain JWT string from client data
+     * @return the tenant ID, or null if extraction fails
+     */
+    public static String extractTenantIdFromEduTokenChain(GeyserImpl geyser, String eduTokenChain) {
+        if (eduTokenChain == null || eduTokenChain.isEmpty()) {
+            return null;
+        }
+        try {
+            String[] parts = eduTokenChain.split("\\.");
+            if (parts.length < 2) {
+                geyser.getLogger().warning("[EduTenancy] EduTokenChain is not a valid JWT (parts: " + parts.length + ")");
+                return null;
+            }
+            String payloadJson = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
+            com.google.gson.JsonObject payload = com.google.gson.JsonParser.parseString(payloadJson).getAsJsonObject();
+
+            if (!payload.has("chain")) {
+                geyser.getLogger().warning("[EduTenancy] EduTokenChain payload has no 'chain' field. Keys: " + payload.keySet());
+                return null;
+            }
+
+            String chain = payload.get("chain").getAsString();
+            String[] chainParts = chain.split("\\|");
+            if (chainParts.length < 1 || chainParts[0].isEmpty()) {
+                geyser.getLogger().warning("[EduTenancy] EduTokenChain 'chain' field is empty or has no tenant ID");
+                return null;
+            }
+
+            String tenantId = chainParts[0];
+            geyser.getLogger().debug("[EduTenancy] Extracted tenant ID from EduTokenChain: " + tenantId);
+            return tenantId;
+        } catch (Exception e) {
+            geyser.getLogger().warning("[EduTenancy] Failed to extract tenant ID from EduTokenChain: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

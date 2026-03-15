@@ -115,13 +115,6 @@ public interface GeyserConfig {
     }
 
     @Comment("""
-            The signed token for Minecraft Education Edition authentication.
-            Obtain this from https://meeservices.azurewebsites.net/v2/signin using your tenant's credentials.
-            Leave empty to disable Education Edition support.""")
-    @DefaultString("")
-    String educationToken();
-
-    @Comment("""
             Education Edition dedicated server ID from the admin portal.
             If left empty and edu-server-name is set, Geyser will automatically register a new server.
             The server ID will be saved to edu_session.json after registration.""")
@@ -154,13 +147,23 @@ public interface GeyserConfig {
     @DefaultString("verified")
     String eduAuthMode();
 
-    @Comment("Whether to use the player's real Microsoft 365 display name instead of their Bedrock gamertag.")
-    @DefaultBoolean(true)
-    boolean eduUseRealNames();
+    @Comment("""
+            Education Edition tenancy mode:
+            "official" = Uses Microsoft's MESS registration. One registered token serves all tenants.
+                         The edu-server-tokens list is ignored.
+            "hybrid" = Server is MESS-registered under one primary tenant. Additional tenants can
+                       connect using manually-provided tokens in edu-server-tokens.
+            "standalone" = No MESS registration. All tokens come from edu-server-tokens.
+                           Each token is parsed on startup to extract its tenant ID for routing.""")
+    @DefaultString("official")
+    String eduTenancyMode();
 
-    @Comment("Whether to log the tenant ID and AD role when an Education Edition player connects.")
-    @DefaultBoolean(true)
-    boolean eduLogTenant();
+    @Comment("""
+            Additional server tokens for hybrid or standalone multi-tenancy mode.
+            Each token is a JWT obtained from a school's Minecraft Education admin portal.
+            On startup, each token is decoded to extract its tenant ID automatically.
+            When an edu client connects, their tenant ID is matched against these tokens.""")
+    java.util.List<String> eduServerTokens();
 
     @Comment("If debug messages should be sent through console")
     boolean debugMode();

@@ -320,9 +320,6 @@ public final class GeyserServer {
 
         // TODO: Advertising as MCEE allows Education clients to discover this server
         // via LAN/server list, but prevents standard Bedrock clients from seeing it.
-        // Uncomment the edition check below when an Education-only server is desired.
-        // String eduToken = geyser.config().educationToken();
-        // String edition = (eduToken != null && !eduToken.isEmpty()) ? "MCEE" : "MCPE";
 
         BedrockPong pong = new BedrockPong()
                 .edition("MCPE")

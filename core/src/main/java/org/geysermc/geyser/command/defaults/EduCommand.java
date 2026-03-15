@@ -117,7 +117,6 @@ public class EduCommand extends GeyserCommand {
         }
         source.sendMessage(ChatColor.YELLOW + "Education players: " + ChatColor.WHITE + eduCount + "/" + totalCount + " online");
         source.sendMessage(ChatColor.YELLOW + "Auth mode: " + ChatColor.WHITE + geyser.config().eduAuthMode());
-        source.sendMessage(ChatColor.YELLOW + "Use real names: " + ChatColor.WHITE + geyser.config().eduUseRealNames());
     }
 
     private void executePlayers(CommandContext<GeyserCommandSource> context) {

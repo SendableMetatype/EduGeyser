@@ -90,7 +90,8 @@ public class GeyserSessionAdapter extends SessionAdapter {
 
                     boolean isEdu = session.isEducationClient();
                     String xuid = isEdu && (session.xuid() == null || session.xuid().isEmpty()) ? "0" : session.xuid();
-                    String tenantId = isEdu && clientData.getTenantId() != null ? clientData.getTenantId() : "";
+                    // Use the tenant ID extracted from EduTokenChain, NOT clientData.getTenantId() (always null for edu)
+                    String tenantId = isEdu && session.getEducationTenantId() != null ? session.getEducationTenantId() : "";
                     int adRole = isEdu ? clientData.getAdRole() : -1;
 
                     encryptedData = cipher.encryptFromString(BedrockData.of(
@@ -148,8 +149,8 @@ public class GeyserSessionAdapter extends SessionAdapter {
             // Set what our UUID *probably* is going to be
             if (session.remoteServer().authType() == AuthType.FLOODGATE) {
                 if (session.isEducationClient()) {
-                    BedrockClientData cd = session.getClientData();
-                    String tenantId = cd.getTenantId() != null ? cd.getTenantId() : "";
+                    // Use the tenant ID extracted from EduTokenChain, NOT clientData.getTenantId()
+                    String tenantId = session.getEducationTenantId() != null ? session.getEducationTenantId() : "";
                     uuid = createEducationUuid(tenantId, session.bedrockUsername());
                 } else {
                     uuid = new UUID(0, Long.parseLong(session.xuid()));

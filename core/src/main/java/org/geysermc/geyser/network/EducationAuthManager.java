@@ -30,6 +30,7 @@ import com.google.gson.JsonParser;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 import org.geysermc.geyser.session.GeyserSession;
+import org.geysermc.geyser.util.LoginEncryptionUtils;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -101,8 +102,7 @@ public class EducationAuthManager {
                 + ", eduServerIp='" + geyser.config().eduServerIp() + "'");
 
         if (!hasServerId && !hasServerName) {
-            // Neither server ID nor server name configured — education mode is off
-            // Stay silent — the old educationToken system may still be in use
+            // Neither server ID nor server name configured — education auth manager inactive
             logger.debug(LOG_PREFIX + "No edu-server-id or edu-server-name configured. Education auth manager inactive.");
             return;
         }
@@ -514,6 +514,14 @@ public class EducationAuthManager {
         logger.debug(LOG_PREFIX + "Parsed JWT: exp=" + serverTokenExpires
                 + " (" + formatExpiry(serverTokenExpires) + ")"
                 + ", serverToken length=" + serverToken.length());
+
+        // Extract tenant ID and register in multi-tenancy pool
+        String tenantId = LoginEncryptionUtils.extractTenantIdFromServerToken(geyser, serverToken);
+        if (tenantId != null && !tenantId.isEmpty()) {
+            LoginEncryptionUtils.registerServerToken(geyser, serverToken, tenantId, "MESS registration");
+        } else {
+            logger.warning(LOG_PREFIX + "Could not extract tenantId from server token. MESS token will still work via fallback.");
+        }
 
         // Extract serverId if we don't have one yet (from registration)
         if (serverId == null || serverId.isEmpty()) {
