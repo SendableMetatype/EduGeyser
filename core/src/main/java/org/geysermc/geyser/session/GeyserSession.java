@@ -866,7 +866,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
 
             DimensionDataPacket dimensionDataPacket = new DimensionDataPacket();
             dimensionDataPacket.getDefinitions().add(new DimensionDefinition("minecraft:overworld", maxY, minY, 5 /* Void */));
-            upstream.sendPacket(dimensionDataPacket);
+            sendUpstreamPacket(dimensionDataPacket);
         }
 
         startGame();
@@ -875,34 +875,34 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
 
         ItemComponentPacket componentPacket = new ItemComponentPacket();
         componentPacket.getItems().addAll(itemMappings.getItemDefinitions().values());
-        upstream.sendPacket(componentPacket);
+        sendUpstreamPacket(componentPacket);
 
         ChunkUtils.sendEmptyChunks(this, playerEntity.getPosition().toInt(), 0, false);
 
         BiomeDefinitionListPacket biomeDefinitionListPacket = new BiomeDefinitionListPacket();
         biomeDefinitionListPacket.setBiomes(Registries.BIOMES.get());
-        upstream.sendPacket(biomeDefinitionListPacket);
+        sendUpstreamPacket(biomeDefinitionListPacket);
 
         AvailableEntityIdentifiersPacket entityPacket = new AvailableEntityIdentifiersPacket();
         entityPacket.setIdentifiers(Registries.BEDROCK_ENTITY_IDENTIFIERS.get());
-        upstream.sendPacket(entityPacket);
+        sendUpstreamPacket(entityPacket);
 
         CameraPresetsPacket cameraPresetsPacket = new CameraPresetsPacket();
         cameraPresetsPacket.getPresets().addAll(CameraDefinitions.CAMERA_PRESETS);
-        upstream.sendPacket(cameraPresetsPacket);
+        sendUpstreamPacket(cameraPresetsPacket);
 
         CreativeContentPacket creativePacket = new CreativeContentPacket();
         creativePacket.getContents().addAll(this.itemMappings.getCreativeItems());
         creativePacket.getGroups().addAll(this.itemMappings.getCreativeItemGroups());
-        upstream.sendPacket(creativePacket);
+        sendUpstreamPacket(creativePacket);
 
         PlayStatusPacket playStatusPacket = new PlayStatusPacket();
         playStatusPacket.setStatus(PlayStatusPacket.Status.PLAYER_SPAWN);
-        upstream.sendPacket(playStatusPacket);
+        sendUpstreamPacket(playStatusPacket);
 
         SetCommandsEnabledPacket setCommandsEnabledPacket = new SetCommandsEnabledPacket();
         setCommandsEnabledPacket.setCommandsEnabled(!geyser.config().gameplay().xboxAchievementsEnabled());
-        upstream.sendPacket(setCommandsEnabledPacket);
+        sendUpstreamPacket(setCommandsEnabledPacket);
 
         UpdateAttributesPacket attributesPacket = new UpdateAttributesPacket();
         attributesPacket.setRuntimeEntityId(getPlayerEntity().geyserId());
@@ -910,7 +910,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         // Bedrock clients move very fast by default until they get an attribute packet correcting the speed
         attributesPacket.setAttributes(Collections.singletonList(
             GeyserAttributeType.MOVEMENT_SPEED.getAttribute()));
-        upstream.sendPacket(attributesPacket);
+        sendUpstreamPacket(attributesPacket);
 
         GameRulesChangedPacket gamerulePacket = new GameRulesChangedPacket();
         // Only allow the server to send health information
@@ -927,7 +927,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         // See WaypointCache for details
         gamerulePacket.getGameRules().add(new GameRuleData<>("locatorBar", false));
         
-        upstream.sendPacket(gamerulePacket);
+        sendUpstreamPacket(gamerulePacket);
     }
 
     public void authenticate(String username) {
@@ -1535,7 +1535,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         textPacket.setNeedsTranslation(false);
         textPacket.setMessage(message);
 
-        upstream.sendPacket(textPacket);
+        sendUpstreamPacket(textPacket);
     }
 
     @Override
@@ -1688,7 +1688,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         int renderDistance = ChunkUtils.squareToCircle(this.serverRenderDistance);
         ChunkRadiusUpdatedPacket chunkRadiusUpdatedPacket = new ChunkRadiusUpdatedPacket();
         chunkRadiusUpdatedPacket.setRadius(renderDistance);
-        upstream.sendPacket(chunkRadiusUpdatedPacket);
+        sendUpstreamPacket(chunkRadiusUpdatedPacket);
     }
 
     public InetSocketAddress getSocketAddress() {
@@ -1879,14 +1879,14 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setScenarioId("");
         startGamePacket.setOwnerId("");
 
-        upstream.sendPacket(startGamePacket);
+        sendUpstreamPacket(startGamePacket);
     }
 
     private void syncEntityProperties() {
         for (NbtMap nbtMap : Registries.BEDROCK_ENTITY_PROPERTIES.get()) {
             SyncEntityPropertyPacket syncEntityPropertyPacket = new SyncEntityPropertyPacket();
             syncEntityPropertyPacket.setData(nbtMap);
-            upstream.sendPacket(syncEntityPropertyPacket);
+            sendUpstreamPacket(syncEntityPropertyPacket);
         }
     }
 
@@ -2057,7 +2057,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     public void sendGameRule(String gameRule, Object value) {
         GameRulesChangedPacket gameRulesChangedPacket = new GameRulesChangedPacket();
         gameRulesChangedPacket.getGameRules().add(new GameRuleData<>(gameRule, value));
-        upstream.sendPacket(gameRulesChangedPacket);
+        sendUpstreamPacket(gameRulesChangedPacket);
     }
 
     private static final Ability[] USED_ABILITIES = Ability.values();
