@@ -86,6 +86,7 @@ import org.cloudburstmc.protocol.bedrock.packet.CameraPresetsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.CreativeContentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.DimensionDataPacket;
+import org.cloudburstmc.protocol.bedrock.packet.EducationSettingsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.EmoteListPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GameRulesChangedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ItemComponentPacket;
@@ -155,6 +156,7 @@ import org.geysermc.geyser.item.type.BlockItem;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.JavaDimension;
 import org.geysermc.geyser.level.physics.CollisionManager;
+import org.geysermc.geyser.network.CodecProcessor;
 import org.geysermc.geyser.network.netty.LocalSession;
 import org.geysermc.geyser.registry.Registries;
 import org.geysermc.geyser.registry.type.BlockMappings;
@@ -419,6 +421,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     private int clientRenderDistance = -1;
     private int serverRenderDistance = -1;
 
+
     // Exposed for GeyserConnect usage
     protected boolean sentSpawnPacket;
 
@@ -643,6 +646,21 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     private boolean daylightCycle = true;
 
     private boolean reducedDebugInfo = false;
+
+    /**
+     * Whether this client is Minecraft Education Edition.
+     * Detected from TitleId in client JWT, with fallback to education-token config.
+     */
+    @Getter @Setter
+    private boolean educationClient = false;
+
+    /**
+     * The tenant ID extracted from the EduTokenChain JWT payload.
+     * This is the real, cryptographically signed tenant ID. Do NOT use
+     * BedrockClientData.getTenantId() as it is always null for edu clients.
+     */
+    @Getter @Setter
+    private @Nullable String educationTenantId = null;
 
     /**
      * The op permission level set by the server
@@ -926,7 +944,12 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         // We disable the locator bar until we are certain that the server wants us to enable it
         // See WaypointCache for details
         gamerulePacket.getGameRules().add(new GameRuleData<>("locatorBar", false));
-        
+        // Education Edition gamerules
+        if (educationClient) {
+            gamerulePacket.getGameRules().add(new GameRuleData<>("allowdestructiveobjects", true));
+            gamerulePacket.getGameRules().add(new GameRuleData<>("allowmobs", true));
+            gamerulePacket.getGameRules().add(new GameRuleData<>("globalmute", false));
+        }
         sendUpstreamPacket(gamerulePacket);
     }
 
@@ -1154,6 +1177,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
 
     public void disconnect(Component reason) {
         if (!closed) {
+            geyser.getLogger().debug("Session disconnect: %s", reason);
             loggedIn = false;
 
             SessionDisconnectEvent disconnectEvent = new SessionDisconnectEventImpl(this, reason);
@@ -1289,7 +1313,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
 
             boolean gameShouldUpdate = !tickingFrozen || stepTicks > 0;
             if (stepTicks > 0) {
-                --stepTicks;
+               --stepTicks;
             }
 
             Entity vehicle = playerEntity.getVehicle();
@@ -1806,8 +1830,8 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setDefaultSpawn(Vector3i.ZERO);
         startGamePacket.setAchievementsDisabled(!geyser.config().gameplay().xboxAchievementsEnabled());
         startGamePacket.setCurrentTick(-1);
-        startGamePacket.setEduEditionOffers(0);
-        startGamePacket.setEduFeaturesEnabled(false);
+        startGamePacket.setEduEditionOffers(educationClient ? 1 : 0);
+        startGamePacket.setEduFeaturesEnabled(educationClient);
         startGamePacket.setRainLevel(0);
         startGamePacket.setLightningLevel(0);
         startGamePacket.setMultiplayerGame(true);
@@ -1829,7 +1853,9 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setWorldTemplateOptionLocked(false);
         startGamePacket.setSpawnBiomeType(SpawnBiomeType.DEFAULT);
         startGamePacket.setCustomBiomeName("");
-        startGamePacket.setEducationProductionId("");
+        startGamePacket.setEducationProductionId(educationClient ? "education" : "");
+        geyser.getLogger().debug("Education flags set: eduEditionOffers=%s, eduFeaturesEnabled=%s, educationProductionId=%s",
+            startGamePacket.getEduEditionOffers(), startGamePacket.isEduFeaturesEnabled(), startGamePacket.getEducationProductionId());
         startGamePacket.setForceExperimentalGameplay(OptionalBoolean.empty());
 
         String serverName = geyser.config().gameplay().serverName();
@@ -1853,6 +1879,11 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.getExperiments().add(new ExperimentData("upcoming_creator_features", true));
         // Needed for certain molang queries used in blocks and items
         startGamePacket.getExperiments().add(new ExperimentData("experimental_molang_features", true));
+        if (educationClient) {
+            startGamePacket.getExperiments().add(new ExperimentData("chemistry", true));
+            startGamePacket.getExperiments().add(new ExperimentData("gametest", true));
+            geyser.getLogger().debug("Education experiments added: chemistry, gametest");
+        }
 
         startGamePacket.setVanillaVersion("*");
         startGamePacket.setInventoriesServerAuthoritative(true);
@@ -1879,7 +1910,46 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setScenarioId("");
         startGamePacket.setOwnerId("");
 
+        // Education gamerules embedded in StartGamePacket (part of LevelSettings)
+        if (educationClient) {
+            startGamePacket.getGamerules().add(new GameRuleData<>("codebuilder", false));
+            startGamePacket.getGamerules().add(new GameRuleData<>("allowdestructiveobjects", true));
+            startGamePacket.getGamerules().add(new GameRuleData<>("allowmobs", true));
+            startGamePacket.getGamerules().add(new GameRuleData<>("globalmute", false));
+            geyser.getLogger().debug("Education gamerules added to StartGamePacket");
+        }
+
+        geyser.getLogger().debug("Sending StartGamePacket (vanillaVersion=%s)", startGamePacket.getVanillaVersion());
+
+        // For Education clients, set the education codec permanently for this session.
+        // It only differs in StartGamePacket serialization (appends 3 extra edu strings);
+        // all other packets use identical serializers. Encoding is deferred to Netty's
+        // event loop, so we can't swap temporarily; it must stay active.
+        if (educationClient) {
+            upstream.getSession().setCodec(CodecProcessor.educationCodec(upstream.getSession().getCodec()));
+            // setCodec() creates a new codec helper, wiping registries. Re-set them.
+            upstream.getCodecHelper().setItemDefinitions(this.itemMappings);
+            upstream.getCodecHelper().setBlockDefinitions(this.blockMappings);
+            upstream.getCodecHelper().setCameraPresetDefinitions(CameraDefinitions.CAMERA_DEFINITIONS);
+        }
         sendUpstreamPacket(startGamePacket);
+
+        // Send EducationSettingsPacket right after StartGamePacket for Education clients
+        if (educationClient) {
+            EducationSettingsPacket eduSettings = new EducationSettingsPacket();
+            eduSettings.setCodeBuilderUri("");
+            eduSettings.setCodeBuilderTitle("");
+            eduSettings.setCanResizeCodeBuilder(false);
+            eduSettings.setDisableLegacyTitle(false);
+            eduSettings.setPostProcessFilter("");
+            eduSettings.setScreenshotBorderPath("");
+            eduSettings.setEntityCapabilities(OptionalBoolean.of(false));
+            eduSettings.setOverrideUri(Optional.empty());
+            eduSettings.setQuizAttached(false);
+            eduSettings.setExternalLinkSettings(OptionalBoolean.empty());
+            sendUpstreamPacket(eduSettings);
+        }
+
     }
 
     private void syncEntityProperties() {
