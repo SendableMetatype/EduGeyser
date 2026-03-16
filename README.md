@@ -18,8 +18,8 @@ Pre-built jars are available on the [Releases](https://github.com/SendableMetaty
 
 ## Documentation
 
-- **[Setup Guide](SETUP-GUIDE.md)** - How to install and configure EduGeyser
-- **[MESS Tooling Reference](MESS-Tooling-Notebook-Reference.md)** - Technical reference for the Microsoft Education Server Services API
+- **[Setup Guide](https://github.com/SendableMetatype/EduGeyser/blob/full/SETUP-GUIDE.md)** - How to install and configure EduGeyser
+- **[MESS Tooling Reference](https://github.com/SendableMetatype/EduGeyser/blob/full/MESS-Tooling-Notebook-Reference.md)** - Technical reference for the Microsoft Education Server Services API
 
 ---
 
