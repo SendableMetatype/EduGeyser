@@ -81,6 +81,7 @@ import org.cloudburstmc.protocol.bedrock.packet.SetEntityLinkPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SettingsCommandPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SimpleEventPacket;
+import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 import org.cloudburstmc.protocol.bedrock.packet.SubChunkRequestPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SubClientLoginPacket;
 import org.cloudburstmc.protocol.common.util.VarInts;
@@ -91,7 +92,7 @@ import org.cloudburstmc.protocol.common.util.VarInts;
  * TODO: Keep serializers up-to-date!
  */
 @SuppressWarnings("deprecation")
-class CodecProcessor {
+public class CodecProcessor {
     
     /**
      * Generic serializer that throws an exception when trying to serialize or deserialize a packet, leading to client disconnection.
@@ -252,13 +253,9 @@ class CodecProcessor {
         }
 
         BedrockCodec.Builder codecBuilder = codec.toBuilder()
-            // Illegal unused serverbound EDU packets
-            .updateSerializer(PhotoTransferPacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(LabTablePacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(CodeBuilderSourcePacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(CreatePhotoPacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(NpcRequestPacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(PhotoInfoRequestPacket.class, ILLEGAL_SERIALIZER)
+            // Education packets (PhotoTransfer, LabTable, CodeBuilderSource, CreatePhoto,
+            // NpcRequest, PhotoInfoRequest) keep their original serializers so Education
+            // clients can use chemistry tables, NPCs, photos, and Code Builder.
             // Illegal unused serverbound packets that are deprecated
             .updateSerializer(ClientCheatAbilityPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(CraftingEventPacket.class, ILLEGAL_SERIALIZER)
@@ -266,7 +263,7 @@ class CodecProcessor {
             .updateSerializer(ClientCacheBlobStatusPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(SubClientLoginPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(SubChunkRequestPacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(GameTestRequestPacket.class, ILLEGAL_SERIALIZER)
+            .updateSerializer(GameTestRequestPacket.class, IGNORED_SERIALIZER)
             // Ignored serverbound packets
             .updateSerializer(ClientToServerHandshakePacket.class, IGNORED_SERIALIZER)
             .updateSerializer(EntityFallPacket.class, IGNORED_SERIALIZER)
@@ -311,6 +308,16 @@ class CodecProcessor {
             }
 
             return codecBuilder.build();
+    }
+
+    /**
+     * Creates an Education Edition variant of the given codec that appends 3 extra
+     * string fields to the StartGamePacket level settings.
+     */
+    public static BedrockCodec educationCodec(BedrockCodec codec) {
+        return codec.toBuilder()
+            .updateSerializer(StartGamePacket.class, EducationStartGameSerializer.INSTANCE)
+            .build();
     }
 
     /**
