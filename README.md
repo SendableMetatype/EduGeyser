@@ -21,6 +21,20 @@ Pre-built jars are available on the [Releases](https://github.com/SendableMetaty
 - **[Setup Guide](https://github.com/SendableMetatype/EduGeyser/blob/full/SETUP-GUIDE.md)** - How to install and configure EduGeyser
 - **[MESS Tooling Reference](https://github.com/SendableMetatype/EduGeyser/blob/full/MESS-Tooling-Notebook-Reference.md)** - Technical reference for the Microsoft Education Server Services API
 
+## How It Works
+
+Education Edition uses a different authentication and protocol flow than standard Bedrock. EduGeyser handles this transparently so both client types can coexist on the same server.
+
+**Authentication**: Education clients present an `EduTokenChain` JWT chain signed by Microsoft's MESS (Minecraft Education Server Services) infrastructure using EC P-384 keys. EduGeyser verifies this chain against MESS public keys instead of Xbox Live. The server itself authenticates with MESS via an OAuth2 device code flow to obtain server tokens that authorize it to accept education connections.
+
+**Protocol**: Education Edition sends a slightly different StartGamePacket with 3 extra string fields appended to the level settings. EduGeyser swaps in a custom serializer per-session for education clients via a Netty codec swap. It also handles education-specific packet types (chemistry tables, NPCs, Code Builder) and different block break action types (`CONTINUE_BREAK`/`STOP_BREAK` instead of `BLOCK_CONTINUE_DESTROY`/`BLOCK_PREDICT_DESTROY`).
+
+**Multi-tenancy**: Multiple M365 tenants (schools) can share a single server. Each tenant's server token is stored and routed by tenant ID extracted from the EduTokenChain JWT. Supported modes are official (MESS-registered), hybrid (MESS + manual tokens), and standalone (manual tokens only).
+
+**Identity**: Education players lack Xbox Live accounts, so standard XUID-based identity doesn't work. [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate) generates deterministic UUIDs from `SHA-256(tenantId:username)` with a distinct MSB namespace (`0x0000000100000001`) that avoids collisions with both Java and standard Bedrock UUIDs.
+
+All education-specific code paths are behind `isEducationClient()` checks. Standard Bedrock sessions are completely unaffected.
+
 ---
 
 <img src="https://geysermc.org/img/geyser-1760-860.png" alt="Geyser" width="600"/>
