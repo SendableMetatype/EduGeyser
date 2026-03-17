@@ -82,6 +82,7 @@ import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
 import org.geysermc.geyser.network.EducationAuthManager;
+import org.geysermc.geyser.network.EducationTokenManager;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -104,7 +105,6 @@ import org.geysermc.geyser.translator.text.MessageTranslator;
 import org.geysermc.geyser.util.AssetUtils;
 import org.geysermc.geyser.util.CodeOfConductManager;
 import org.geysermc.geyser.util.JsonUtils;
-import org.geysermc.geyser.util.LoginEncryptionUtils;
 import org.geysermc.geyser.util.NewsHandler;
 import org.geysermc.geyser.util.VersionCheckUtils;
 import org.geysermc.geyser.util.WebUtils;
@@ -175,10 +175,10 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
     private EducationAuthManager educationAuthManager;
 
     /**
-     * Maps tenant ID to server token (JWT signedToken value) for Education Edition multi-tenancy.
-     * Populated on startup from MESS registration and/or config server-tokens list.
+     * Manages Education Edition tenant token pool for multi-tenancy.
+     * Handles token registration, lookup, and tenant ID extraction.
      */
-    private final Map<String, String> tenantTokenPool = new ConcurrentHashMap<>();
+    private final EducationTokenManager educationTokenManager = new EducationTokenManager();
     private final GeyserBootstrap bootstrap;
 
     private final GeyserEventBus eventBus;
@@ -532,7 +532,7 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
                 logger.debug("[EduTenancy] Loading %s server token(s) from config", configTokens.size());
                 for (String token : configTokens) {
                     if (token != null && !token.isBlank()) {
-                        LoginEncryptionUtils.registerServerTokenFromConfig(this, token.trim(), "config edu-server-tokens");
+                        educationTokenManager.registerServerTokenFromConfig(logger, token.trim(), "config edu-server-tokens");
                     }
                 }
             } else if ("standalone".equalsIgnoreCase(tenancyMode)) {
@@ -540,7 +540,7 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             }
         }
 
-        logger.debug("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, LoginEncryptionUtils.getRegisteredTenantCount());
+        logger.debug("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationTokenManager.getRegisteredTenantCount());
 
         MetricsPlatform metricsPlatform = bootstrap.createMetricsPlatform();
         if (metricsPlatform != null && metricsPlatform.enabled()) {
