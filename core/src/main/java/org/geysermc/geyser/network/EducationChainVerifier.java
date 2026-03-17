@@ -81,11 +81,8 @@ public final class EducationChainVerifier {
             }
 
             String headerJson = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
-            logger.debug("[EduAuth] EduTokenChain header: %s", headerJson);
-
             JsonObject header = JsonParser.parseString(headerJson).getAsJsonObject();
             String x5u = header.has("x5u") ? header.get("x5u").getAsString() : null;
-            logger.debug("[EduAuth] EduTokenChain x5u: %s", x5u);
 
             byte[] signedData = (parts[0] + "." + parts[1]).getBytes(StandardCharsets.UTF_8);
             byte[] signatureBytes = Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[2]));
@@ -104,12 +101,10 @@ public final class EducationChainVerifier {
                     sig.update(signedData);
                     if (sig.verify(derSignature)) {
                         logger.debug("[EduAuth] EduTokenChain verified with MESS key: %s...", messKeyBase64.substring(0, 20));
-                        String payloadJson = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
-                        logger.debug("[EduAuth] EduTokenChain payload: %s", payloadJson);
                         return true;
                     }
-                } catch (Exception e) {
-                    logger.debug("[EduAuth] Key %s... failed: %s", messKeyBase64.substring(0, 20), e.getMessage());
+                } catch (Exception ignored) {
+                    // Key didn't match; try next
                 }
             }
 

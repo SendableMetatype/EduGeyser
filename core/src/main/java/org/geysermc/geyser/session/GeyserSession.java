@@ -1854,8 +1854,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setSpawnBiomeType(SpawnBiomeType.DEFAULT);
         startGamePacket.setCustomBiomeName("");
         startGamePacket.setEducationProductionId(educationClient ? "education" : "");
-        geyser.getLogger().debug("Education flags set: eduEditionOffers=%s, eduFeaturesEnabled=%s, educationProductionId=%s",
-            startGamePacket.getEduEditionOffers(), startGamePacket.isEduFeaturesEnabled(), startGamePacket.getEducationProductionId());
         startGamePacket.setForceExperimentalGameplay(OptionalBoolean.empty());
 
         String serverName = geyser.config().gameplay().serverName();
@@ -1882,7 +1880,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         if (educationClient) {
             startGamePacket.getExperiments().add(new ExperimentData("chemistry", true));
             startGamePacket.getExperiments().add(new ExperimentData("gametest", true));
-            geyser.getLogger().debug("Education experiments added: chemistry, gametest");
         }
 
         startGamePacket.setVanillaVersion("*");
@@ -1916,7 +1913,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
             startGamePacket.getGamerules().add(new GameRuleData<>("allowdestructiveobjects", true));
             startGamePacket.getGamerules().add(new GameRuleData<>("allowmobs", true));
             startGamePacket.getGamerules().add(new GameRuleData<>("globalmute", false));
-            geyser.getLogger().debug("Education gamerules added to StartGamePacket");
         }
 
         geyser.getLogger().debug("Sending StartGamePacket (vanillaVersion=%s)", startGamePacket.getVanillaVersion());

@@ -175,8 +175,8 @@ public class LoginEncryptionUtils {
             default -> "role=" + adRole;
         };
 
-        geyser.getLogger().debug("[EduAuth] Education client detected (ChainSignedByMojang: %s, TenantId: %s, Role: %s)",
-                result.signed(), tenantId, roleName);
+        geyser.getLogger().debug("[EduAuth] Education client: tenant=%s, role=%s",
+                tenantId != null ? tenantId : "unknown", roleName);
 
         // Optionally verify the EduTokenChain signature against MESS public keys
         boolean eduVerified = "verified".equalsIgnoreCase(geyser.config().eduAuthMode());
@@ -191,15 +191,6 @@ public class LoginEncryptionUtils {
                 geyser.getLogger().warning("[EduAuth] EduTokenChain signature verification failed, allowing connection anyway (MESS key rotation unresolved).");
                 // TODO: Re-enable rejection once MESS key rotation is resolved
             }
-        }
-
-        geyser.getLogger().debug("[EduAuth] Education client connected (TenantId: %s, Role: %s)",
-                tenantId != null ? tenantId : "unknown", roleName);
-
-        if (data.getEduSessionToken() != null && !data.getEduSessionToken().isEmpty()) {
-            geyser.getLogger().debug("[EduAuth] Client has MESS session token (connected via server list).");
-        } else {
-            geyser.getLogger().debug("[EduAuth] Client connected via direct URI (no MESS session token).");
         }
     }
 
@@ -266,9 +257,7 @@ public class LoginEncryptionUtils {
         claims.setClaim("salt", Base64.getEncoder().encodeToString(token));
         claims.setClaim("signedToken", educationToken);
         jws.setPayload(claims.toJson());
-        String jwtResult = jws.getCompactSerialization();
-        geyser.getLogger().debug("[EduHandshake] JWT built successfully (length=%s)", jwtResult.length());
-        return jwtResult;
+        return jws.getCompactSerialization();
     }
 
     private static void sendEncryptionFailedMessage(GeyserImpl geyser) {
