@@ -31,7 +31,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 import org.geysermc.geyser.session.GeyserSession;
-import org.geysermc.geyser.util.LoginEncryptionUtils;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -661,9 +660,10 @@ public class EducationAuthManager {
                 serverTokenExpires, formatExpiry(serverTokenExpires), serverToken.length());
 
         // Extract tenant ID and register in multi-tenancy pool
-        String tenantId = LoginEncryptionUtils.extractTenantIdFromServerToken(geyser, serverToken);
+        EducationTokenManager tokenManager = geyser.getEducationTokenManager();
+        String tenantId = tokenManager.extractTenantIdFromServerToken(logger, serverToken);
         if (tenantId != null && !tenantId.isEmpty()) {
-            LoginEncryptionUtils.registerServerToken(geyser, serverToken, tenantId, "MESS tooling registration");
+            tokenManager.registerServerToken(logger, serverToken, tenantId, "MESS tooling registration");
         } else {
             logger.warning(LOG_PREFIX + "Could not extract tenantId from server token. MESS token will still work via fallback.");
         }
