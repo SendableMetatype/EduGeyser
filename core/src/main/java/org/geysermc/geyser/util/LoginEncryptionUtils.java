@@ -42,7 +42,6 @@ import org.geysermc.cumulus.response.result.ValidFormResponseResult;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.network.EducationAuthManager;
 import org.geysermc.geyser.network.EducationChainVerifier;
-import org.geysermc.geyser.network.EducationTokenManager;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.auth.AuthData;
 import org.geysermc.geyser.session.auth.BedrockClientData;
@@ -163,11 +162,11 @@ public class LoginEncryptionUtils {
             EducationChainVerifier.dumpEduChain(geyser.getLogger(), authPayload, jwt);
         }
 
-        EducationTokenManager tokenManager = geyser.getEducationTokenManager();
+        EducationAuthManager eduAuthMgr = geyser.getEducationAuthManager();
 
         // Extract the REAL tenant ID from the EduTokenChain JWT payload.
         // Do NOT use data.getTenantId() -- it is always null for edu clients.
-        String tenantId = tokenManager.extractTenantIdFromEduTokenChain(geyser.getLogger(), data.getEduTokenChain());
+        String tenantId = eduAuthMgr.extractTenantIdFromEduTokenChain(data.getEduTokenChain());
         session.setEducationTenantId(tenantId);
         int adRole = data.getAdRole();
         String roleName = switch (adRole) {
@@ -181,8 +180,7 @@ public class LoginEncryptionUtils {
 
         // Optionally verify the EduTokenChain signature against MESS public keys
         boolean eduVerified = "verified".equalsIgnoreCase(geyser.config().eduAuthMode());
-        EducationAuthManager eduAuth = geyser.getEducationAuthManager();
-        boolean eduSystemActive = eduAuth != null && eduAuth.isActive();
+        boolean eduSystemActive = eduAuthMgr != null && eduAuthMgr.isActive();
 
         if (eduVerified && eduSystemActive) {
             String eduTokenChain = data.getEduTokenChain();
@@ -235,33 +233,14 @@ public class LoginEncryptionUtils {
      */
     private static String buildEducationHandshakeJwt(GeyserSession session, KeyPair serverKeyPair, byte[] token) throws Exception {
         GeyserImpl geyser = session.getGeyser();
-        EducationTokenManager tokenManager = geyser.getEducationTokenManager();
+        EducationAuthManager eduAuth = geyser.getEducationAuthManager();
 
-        // Multi-tenancy token routing:
-        // 1. Try to find a token matching this client's tenant ID from the pool
-        // 2. Fall back to the MESS-registered token (official/hybrid)
-        String educationToken = null;
-        String clientTenantId = session.getEducationTenantId();
-
-        if (clientTenantId != null && !clientTenantId.isEmpty()) {
-            educationToken = tokenManager.getTokenForTenant(clientTenantId);
-            if (educationToken != null) {
-                geyser.getLogger().debug("[EduTenancy] Matched token for tenant %s from pool", clientTenantId);
-            }
-        }
-
-        // Fallback: MESS-registered token
-        if (educationToken == null) {
-            EducationAuthManager eduAuth = geyser.getEducationAuthManager();
-            if (eduAuth != null && eduAuth.getServerToken() != null && !eduAuth.getServerToken().isEmpty()) {
-                educationToken = eduAuth.getServerToken();
-                geyser.getLogger().debug("[EduTenancy] Using MESS-registered token (fallback)");
-            }
-        }
+        String educationToken = eduAuth.getTokenForSession(session);
 
         if (educationToken == null || educationToken.isEmpty()) {
+            String clientTenantId = session.getEducationTenantId();
             String tenantInfo = (clientTenantId != null) ? clientTenantId : "unknown";
-            int poolSize = tokenManager.getRegisteredTenantCount();
+            int poolSize = eduAuth.getRegisteredTenantCount();
             geyser.getLogger().warning("[EduTenancy] No server token available for tenant: " + tenantInfo);
 
             session.disconnect(

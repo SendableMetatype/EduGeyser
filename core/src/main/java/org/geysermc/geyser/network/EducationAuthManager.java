@@ -32,6 +32,9 @@ import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 import org.geysermc.geyser.session.GeyserSession;
 
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -121,6 +124,9 @@ public class EducationAuthManager {
     private volatile @Nullable String serverToken;      // Inner payload token (for handshake signedToken)
     private volatile @Nullable String serverTokenJwt;    // Full JWT string (for API Authorization: Bearer header)
     private volatile long serverTokenExpires;
+
+    // Multi-tenancy: maps tenant ID to server token for routing
+    private final ConcurrentHashMap<String, String> tenantTokenPool = new ConcurrentHashMap<>();
 
     private ScheduledFuture<?> updateTask;
     private ScheduledFuture<?> tokenRefreshTask;
@@ -660,10 +666,9 @@ public class EducationAuthManager {
                 serverTokenExpires, formatExpiry(serverTokenExpires), serverToken.length());
 
         // Extract tenant ID and register in multi-tenancy pool
-        EducationTokenManager tokenManager = geyser.getEducationTokenManager();
-        String tenantId = tokenManager.extractTenantIdFromServerToken(logger, serverToken);
+        String tenantId = extractTenantIdFromServerToken(serverToken);
         if (tenantId != null && !tenantId.isEmpty()) {
-            tokenManager.registerServerToken(logger, serverToken, tenantId, "MESS tooling registration");
+            registerServerToken(serverToken, tenantId, "MESS tooling registration");
         } else {
             logger.warning(LOG_PREFIX + "Could not extract tenantId from server token. MESS token will still work via fallback.");
         }
@@ -1017,5 +1022,193 @@ public class EducationAuthManager {
         return Instant.ofEpochSecond(epochSeconds)
                 .atZone(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"));
+    }
+
+    // ---- Tenant Token Pool Management ----
+
+    /**
+     * Register a server token with an already-known tenant ID.
+     *
+     * @param serverToken the server token value
+     * @param tenantId the tenant ID to associate with this token
+     * @param source a description of where this token came from (for logging)
+     */
+    public void registerServerToken(String serverToken, String tenantId, String source) {
+        if (tenantId == null || tenantId.isEmpty()) {
+            if (logger != null) {
+                logger.warning("[EduTenancy] Cannot register token with null/empty tenant ID (source: " + source + ")");
+            }
+            return;
+        }
+        tenantTokenPool.put(tenantId, serverToken);
+        if (logger != null) {
+            logger.debug("[EduTenancy] Registered token for tenant %s (source: %s)", tenantId, source);
+        }
+    }
+
+    /**
+     * Register a server token from config. Extracts the tenant ID from the
+     * pipe-separated server token format automatically.
+     *
+     * @param token the raw token string from config
+     * @param source a description of where this token came from (for logging)
+     */
+    public void registerServerTokenFromConfig(String token, String source) {
+        String tenantId = extractTenantIdFromServerToken(token);
+        if (tenantId != null) {
+            tenantTokenPool.put(tenantId, token);
+            if (logger != null) {
+                logger.debug("[EduTenancy] Registered token for tenant %s (source: %s)", tenantId, source);
+            }
+        } else if (logger != null) {
+            logger.warning("[EduTenancy] Could not extract tenant ID from token (source: " + source + "). Token will not be usable for routing.");
+        }
+    }
+
+    /**
+     * Load server tokens from config and register them in the tenant pool.
+     * Called during initialization for hybrid and standalone tenancy modes.
+     */
+    public void loadConfigTokens(GeyserImpl geyser) {
+        List<String> configTokens = geyser.config().eduServerTokens();
+        if (configTokens != null && !configTokens.isEmpty()) {
+            geyser.getLogger().debug("[EduTenancy] Loading %s server token(s) from config", configTokens.size());
+            for (String token : configTokens) {
+                if (token != null && !token.isBlank()) {
+                    registerServerTokenFromConfig(token.trim(), "config edu-server-tokens");
+                }
+            }
+        } else if ("standalone".equalsIgnoreCase(geyser.config().eduTenancyMode())) {
+            geyser.getLogger().warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
+        }
+    }
+
+    /**
+     * Extract tenant ID from a pipe-separated server token.
+     * Format: tenantId|serverId|expiry|signature.
+     *
+     * @param serverToken the pipe-separated server token string
+     * @return the tenant ID, or null if malformed
+     */
+    public @Nullable String extractTenantIdFromServerToken(String serverToken) {
+        if (serverToken == null || serverToken.isEmpty()) {
+            return null;
+        }
+        String[] parts = serverToken.split("\\|");
+        if (parts.length >= 4) {
+            String tenantId = parts[0].trim();
+            if (!tenantId.isEmpty()) {
+                return tenantId;
+            }
+        }
+        if (logger != null) {
+            logger.warning("[EduTenancy] Unexpected server token format (" + parts.length + " pipe segments). Cannot extract tenant ID.");
+        }
+        return null;
+    }
+
+    /**
+     * Extract the tenant ID from an EduTokenChain JWT.
+     * The payload contains a "chain" field: "tenantId|signature|expiry|nonce".
+     *
+     * <p>IMPORTANT: Do NOT use BedrockClientData.getTenantId() -- it is always
+     * null for Education Edition clients. This is the only reliable source.</p>
+     *
+     * @param eduTokenChain the raw EduTokenChain JWT from client data
+     * @return the tenant ID, or null if extraction fails
+     */
+    public @Nullable String extractTenantIdFromEduTokenChain(String eduTokenChain) {
+        if (eduTokenChain == null || eduTokenChain.isEmpty()) {
+            return null;
+        }
+        try {
+            String[] parts = eduTokenChain.split("\\.");
+            if (parts.length < 2) {
+                if (logger != null) {
+                    logger.warning("[EduTenancy] EduTokenChain is not a valid JWT (parts: " + parts.length + ")");
+                }
+                return null;
+            }
+            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(padBase64(parts[1])));
+            JsonObject payload = JsonParser.parseString(payloadJson).getAsJsonObject();
+
+            if (!payload.has("chain")) {
+                if (logger != null) {
+                    logger.warning("[EduTenancy] EduTokenChain payload has no 'chain' field. Keys: " + payload.keySet());
+                }
+                return null;
+            }
+
+            String chain = payload.get("chain").getAsString();
+            String[] chainParts = chain.split("\\|");
+            if (chainParts.length < 1 || chainParts[0].isEmpty()) {
+                if (logger != null) {
+                    logger.warning("[EduTenancy] EduTokenChain 'chain' field is empty or has no tenant ID");
+                }
+                return null;
+            }
+
+            String tenantId = chainParts[0];
+            if (logger != null) {
+                logger.debug("[EduTenancy] Extracted tenant ID from EduTokenChain: %s", tenantId);
+            }
+            return tenantId;
+        } catch (Exception e) {
+            if (logger != null) {
+                logger.warning("[EduTenancy] Failed to extract tenant ID from EduTokenChain: " + e.getMessage());
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Look up the appropriate server token for an education session.
+     * Checks the tenant token pool first (by client tenant ID), then falls
+     * back to the MESS-registered token.
+     *
+     * @param session the education client's session
+     * @return the server token, or null if none available
+     */
+    public @Nullable String getTokenForSession(GeyserSession session) {
+        String clientTenantId = session.getEducationTenantId();
+
+        // Try tenant-specific token from pool
+        if (clientTenantId != null && !clientTenantId.isEmpty()) {
+            String poolToken = tenantTokenPool.get(clientTenantId);
+            if (poolToken != null) {
+                if (logger != null) {
+                    logger.debug("[EduTenancy] Matched token for tenant %s from pool", clientTenantId);
+                }
+                return poolToken;
+            }
+        }
+
+        // Fallback: MESS-registered token
+        if (serverToken != null && !serverToken.isEmpty()) {
+            if (logger != null) {
+                logger.debug("[EduTenancy] Using MESS-registered token (fallback)");
+            }
+            return serverToken;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the number of registered tenant tokens (for diagnostics).
+     */
+    public int getRegisteredTenantCount() {
+        return tenantTokenPool.size();
+    }
+
+    /**
+     * Pads a Base64URL string to the correct length for decoding.
+     */
+    static String padBase64(String base64) {
+        int padding = 4 - (base64.length() % 4);
+        if (padding != 4) {
+            base64 += "=".repeat(padding);
+        }
+        return base64;
     }
 }
