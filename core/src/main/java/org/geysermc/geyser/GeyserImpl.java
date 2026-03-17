@@ -82,7 +82,6 @@ import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
 import org.geysermc.geyser.network.EducationAuthManager;
-import org.geysermc.geyser.network.EducationTokenManager;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -174,11 +173,6 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
     @Getter
     private EducationAuthManager educationAuthManager;
 
-    /**
-     * Manages Education Edition tenant token pool for multi-tenancy.
-     * Handles token registration, lookup, and tenant ID extraction.
-     */
-    private final EducationTokenManager educationTokenManager = new EducationTokenManager();
     private final GeyserBootstrap bootstrap;
 
     private final GeyserEventBus eventBus;
@@ -516,31 +510,18 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
         }
 
         // Initialize Education Edition auth manager
+        // Initialize Education Edition auth manager and token pool
         this.educationAuthManager = new EducationAuthManager();
         String tenancyMode = config.eduTenancyMode();
         if (!"standalone".equalsIgnoreCase(tenancyMode)) {
-            // Official and hybrid modes use MESS registration
             this.educationAuthManager.initialize(this);
         } else {
             logger.debug("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
         }
-
-        // Load additional server tokens from config (hybrid + standalone modes)
         if (!"official".equalsIgnoreCase(tenancyMode)) {
-            List<String> configTokens = config.eduServerTokens();
-            if (configTokens != null && !configTokens.isEmpty()) {
-                logger.debug("[EduTenancy] Loading %s server token(s) from config", configTokens.size());
-                for (String token : configTokens) {
-                    if (token != null && !token.isBlank()) {
-                        educationTokenManager.registerServerTokenFromConfig(logger, token.trim(), "config edu-server-tokens");
-                    }
-                }
-            } else if ("standalone".equalsIgnoreCase(tenancyMode)) {
-                logger.warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
-            }
+            this.educationAuthManager.loadConfigTokens(this);
         }
-
-        logger.debug("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationTokenManager.getRegisteredTenantCount());
+        logger.debug("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount());
 
         MetricsPlatform metricsPlatform = bootstrap.createMetricsPlatform();
         if (metricsPlatform != null && metricsPlatform.enabled()) {

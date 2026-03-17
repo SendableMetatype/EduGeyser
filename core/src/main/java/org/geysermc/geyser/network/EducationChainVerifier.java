@@ -80,7 +80,7 @@ public final class EducationChainVerifier {
                 return false;
             }
 
-            String headerJson = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[0])));
+            String headerJson = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
             logger.debug("[EduAuth] EduTokenChain header: %s", headerJson);
 
             JsonObject header = JsonParser.parseString(headerJson).getAsJsonObject();
@@ -88,7 +88,7 @@ public final class EducationChainVerifier {
             logger.debug("[EduAuth] EduTokenChain x5u: %s", x5u);
 
             byte[] signedData = (parts[0] + "." + parts[1]).getBytes(StandardCharsets.UTF_8);
-            byte[] signatureBytes = Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[2]));
+            byte[] signatureBytes = Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[2]));
             byte[] derSignature = rawToDer(signatureBytes);
 
             // Try each known MESS public key until one verifies
@@ -104,7 +104,7 @@ public final class EducationChainVerifier {
                     sig.update(signedData);
                     if (sig.verify(derSignature)) {
                         logger.debug("[EduAuth] EduTokenChain verified with MESS key: %s...", messKeyBase64.substring(0, 20));
-                        String payloadJson = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[1])));
+                        String payloadJson = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
                         logger.debug("[EduAuth] EduTokenChain payload: %s", payloadJson);
                         return true;
                     }
@@ -148,8 +148,8 @@ public final class EducationChainVerifier {
                     logger.debug("[EduChainDump] --- Chain JWT #%s (parts: %s) ---", i, parts.length);
 
                     if (parts.length >= 2) {
-                        String header = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[0])));
-                        String payload = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[1])));
+                        String header = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
+                        String payload = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
                         logger.debug("[EduChainDump]   Header:  %s", header);
                         logger.debug("[EduChainDump]   Payload: %s", payload);
                     } else {
@@ -161,8 +161,8 @@ public final class EducationChainVerifier {
                 logger.debug("[EduChainDump] Auth payload is TokenPayload (single token).");
                 String[] parts = token.split("\\.");
                 if (parts.length >= 2) {
-                    String header = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[0])));
-                    String payload = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[1])));
+                    String header = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
+                    String payload = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
                     logger.debug("[EduChainDump]   Header:  %s", header);
                     logger.debug("[EduChainDump]   Payload: %s", payload);
                 }
@@ -175,8 +175,8 @@ public final class EducationChainVerifier {
                 String[] parts = clientDataJwt.split("\\.");
                 logger.debug("[EduChainDump] --- Client Data JWT (parts: %s) ---", parts.length);
                 if (parts.length >= 2) {
-                    String header = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[0])));
-                    String payload = new String(Base64.getUrlDecoder().decode(EducationTokenManager.padBase64(parts[1])));
+                    String header = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
+                    String payload = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
                     logger.debug("[EduChainDump]   Header:  %s", header);
                     // Client data payloads can exceed 10KB (skin data); truncate to keep logs readable
                     if (payload.length() > 2000) {
