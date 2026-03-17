@@ -253,9 +253,14 @@ public class CodecProcessor {
         }
 
         BedrockCodec.Builder codecBuilder = codec.toBuilder()
-            // Education packets (PhotoTransfer, LabTable, CodeBuilderSource, CreatePhoto,
-            // NpcRequest, PhotoInfoRequest) keep their original serializers so Education
-            // clients can use chemistry tables, NPCs, photos, and Code Builder.
+            // Illegal unused serverbound packets for education features.
+            // These are re-enabled in educationCodec() for education sessions only.
+            .updateSerializer(PhotoTransferPacket.class, ILLEGAL_SERIALIZER)
+            .updateSerializer(LabTablePacket.class, ILLEGAL_SERIALIZER)
+            .updateSerializer(CodeBuilderSourcePacket.class, ILLEGAL_SERIALIZER)
+            .updateSerializer(CreatePhotoPacket.class, ILLEGAL_SERIALIZER)
+            .updateSerializer(NpcRequestPacket.class, ILLEGAL_SERIALIZER)
+            .updateSerializer(PhotoInfoRequestPacket.class, ILLEGAL_SERIALIZER)
             // Illegal unused serverbound packets that are deprecated
             .updateSerializer(ClientCheatAbilityPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(CraftingEventPacket.class, ILLEGAL_SERIALIZER)
@@ -263,7 +268,7 @@ public class CodecProcessor {
             .updateSerializer(ClientCacheBlobStatusPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(SubClientLoginPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(SubChunkRequestPacket.class, ILLEGAL_SERIALIZER)
-            .updateSerializer(GameTestRequestPacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(GameTestRequestPacket.class, ILLEGAL_SERIALIZER)
             // Ignored serverbound packets
             .updateSerializer(ClientToServerHandshakePacket.class, IGNORED_SERIALIZER)
             .updateSerializer(EntityFallPacket.class, IGNORED_SERIALIZER)
@@ -311,12 +316,26 @@ public class CodecProcessor {
     }
 
     /**
-     * Creates an Education Edition variant of the given codec that appends 3 extra
-     * string fields to the StartGamePacket level settings.
+     * Creates an Education Edition variant of the given codec.
+     * Appends 3 extra string fields to StartGamePacket and re-enables education
+     * packet types (chemistry tables, NPCs, photos, Code Builder, GameTest) that
+     * are blocked as ILLEGAL in the base codec for standard Bedrock sessions.
+     * These packets are changed to IGNORED so they are deserialized as no-ops
+     * rather than disconnecting the client.
      */
     public static BedrockCodec educationCodec(BedrockCodec codec) {
         return codec.toBuilder()
             .updateSerializer(StartGamePacket.class, EducationStartGameSerializer.INSTANCE)
+            // Re-enable education packets that are ILLEGAL in the base codec.
+            // Education clients legitimately send these for chemistry, NPCs, photos, and Code Builder.
+            // IGNORED allows deserialization without processing (Geyser has no translators for these).
+            .updateSerializer(PhotoTransferPacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(LabTablePacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(CodeBuilderSourcePacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(CreatePhotoPacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(NpcRequestPacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(PhotoInfoRequestPacket.class, IGNORED_SERIALIZER)
+            .updateSerializer(GameTestRequestPacket.class, IGNORED_SERIALIZER)
             .build();
     }
 
