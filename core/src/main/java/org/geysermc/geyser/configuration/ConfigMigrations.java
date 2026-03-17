@@ -188,12 +188,8 @@ public class ConfigMigrations {
                 .addAction(path("gameplay", "show-cooldown"), rename(new Object[] { "gameplay", "cooldown-type" }))
                 .build())
             .addVersion(8, ConfigurationTransformation.builder()
-                // EduGeyser: Remove old edu fields replaced by multi-tenancy system.
-                // education-token is replaced by edu-server-tokens list + MESS auto-registration.
-                // edu-use-real-names and edu-log-tenant were unused dead code.
-                .addAction(path("education-token"), remove())
-                .addAction(path("edu-use-real-names"), remove())
-                .addAction(path("edu-log-tenant"), remove())
+                // EduGeyser: education section is auto-populated by Configurate defaults.
+                // This version bump exists so vanilla v7 configs are recognized as needing the new section.
                 .build())
         .build();
 

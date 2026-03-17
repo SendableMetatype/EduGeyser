@@ -319,9 +319,6 @@ public final class GeyserServer {
             }
         }
 
-        // TODO: Advertising as MCEE allows Education clients to discover this server
-        // via LAN/server list, but prevents standard Bedrock clients from seeing it.
-
         BedrockPong pong = new BedrockPong()
                 .edition("MCPE")
                 .gameType("Survival") // Can only be Survival or Creative as of 1.16.210.59
