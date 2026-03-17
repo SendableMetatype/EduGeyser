@@ -45,12 +45,6 @@ public class LoggingPacketHandler implements BedrockPacketHandler {
         this.session = session;
     }
 
-    @Override
-    public PacketSignal handlePacket(BedrockPacket packet) {
-        geyser.getLogger().debug("Bedrock -> Server: " + packet.getClass().getSimpleName());
-        return BedrockPacketHandler.super.handlePacket(packet);
-    }
-
     PacketSignal defaultHandler(BedrockPacket packet) {
         geyser.getLogger().debug("Handled packet: " + packet.getClass().getSimpleName());
         return PacketSignal.HANDLED;
@@ -393,7 +387,6 @@ public class LoggingPacketHandler implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(DisconnectPacket packet) {
-        geyser.getLogger().debug("Bedrock client disconnect: %s (reason: %s)", packet.getKickMessage(), packet.getReason());
         return defaultHandler(packet);
     }
 

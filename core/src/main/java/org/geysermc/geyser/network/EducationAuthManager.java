@@ -138,9 +138,9 @@ public class EducationAuthManager {
     public void initialize(GeyserImpl geyser) {
         this.geyser = geyser;
         this.logger = geyser.getLogger();
-        this.serverId = geyser.config().eduServerId();
-        this.serverName = geyser.config().eduServerName();
-        this.maxPlayers = geyser.config().eduMaxPlayers();
+        this.serverId = geyser.config().education().serverId();
+        this.serverName = geyser.config().education().serverName();
+        this.maxPlayers = geyser.config().education().maxPlayers();
 
         boolean hasServerId = serverId != null && !serverId.isEmpty();
         boolean hasServerName = serverName != null && !serverName.isEmpty();
@@ -161,7 +161,7 @@ public class EducationAuthManager {
     }
 
     private String resolveServerIp() {
-        String configIp = geyser.config().eduServerIp();
+        String configIp = geyser.config().education().serverIp();
         if (configIp != null && !configIp.isEmpty()) {
             return configIp;
         }
@@ -962,7 +962,7 @@ public class EducationAuthManager {
      * Called during initialization for hybrid and standalone tenancy modes.
      */
     public void loadConfigTokens(GeyserImpl geyser) {
-        List<String> configTokens = geyser.config().eduServerTokens();
+        List<String> configTokens = geyser.config().education().serverTokens();
         if (configTokens != null && !configTokens.isEmpty()) {
             geyser.getLogger().debug("[EduTenancy] Loading %s server token(s) from config", configTokens.size());
             for (String token : configTokens) {
@@ -970,7 +970,7 @@ public class EducationAuthManager {
                     registerServerTokenFromConfig(token.trim(), "config edu-server-tokens");
                 }
             }
-        } else if ("standalone".equalsIgnoreCase(geyser.config().eduTenancyMode())) {
+        } else if ("standalone".equalsIgnoreCase(geyser.config().education().tenancyMode())) {
             geyser.getLogger().warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
         }
     }
