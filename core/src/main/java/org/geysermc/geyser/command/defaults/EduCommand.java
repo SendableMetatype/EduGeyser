@@ -122,8 +122,8 @@ public class EduCommand extends GeyserCommand {
             if (session.isEducationClient()) {
                 count++;
                 String name = session.bedrockUsername();
-                String tenantId = session.getClientData() != null && session.getClientData().getTenantId() != null
-                        ? session.getClientData().getTenantId() : "unknown";
+                String tenantId = session.getEducationTenantId() != null
+                        ? session.getEducationTenantId() : "unknown";
                 int adRole = session.getClientData() != null ? session.getClientData().getAdRole() : -1;
                 String roleName = switch (adRole) {
                     case 0 -> "student";
