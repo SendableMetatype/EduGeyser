@@ -145,48 +145,35 @@ public class EducationAuthManager {
         boolean hasServerId = serverId != null && !serverId.isEmpty();
         boolean hasServerName = serverName != null && !serverName.isEmpty();
 
-        logger.debug(LOG_PREFIX + "Config check: eduServerId='%s', eduServerName='%s', eduMaxPlayers=%s, eduServerIp='%s'",
-                serverId, serverName, maxPlayers, geyser.config().eduServerIp());
-
         if (!hasServerId && !hasServerName) {
             logger.debug(LOG_PREFIX + "No edu-server-id or edu-server-name configured. Education tooling auth manager inactive.");
             return;
         }
 
-        if (hasServerId) {
-            logger.debug(LOG_PREFIX + "Server ID configured: %s", serverId);
-        } else {
-            logger.debug(LOG_PREFIX + "No server ID configured. Will register new server: %s", serverName);
-        }
+        logger.debug(LOG_PREFIX + "Initializing: serverId=%s, serverName=%s, maxPlayers=%s",
+                serverId, serverName, maxPlayers);
 
         this.serverIp = resolveServerIp();
         this.sessionFilePath = geyser.configDirectory().resolve(SESSION_FILE);
-        logger.debug(LOG_PREFIX + "Session file path: %s", sessionFilePath);
 
         // Run auth flow on the scheduled thread to avoid blocking startup
-        logger.debug(LOG_PREFIX + "Submitting auth flow to scheduled thread...");
         geyser.getScheduledThread().execute(this::runAuthFlow);
     }
 
     private String resolveServerIp() {
         String configIp = geyser.config().eduServerIp();
         if (configIp != null && !configIp.isEmpty()) {
-            logger.debug(LOG_PREFIX + "Using configured server IP: %s", configIp);
             return configIp;
         }
 
         int port = geyser.config().bedrock().port();
-        logger.debug(LOG_PREFIX + "No edu-server-ip configured. Attempting auto-detection (bedrock port: %s)...", port);
         String detectedIp = detectPublicIp();
         if (detectedIp != null) {
-            String result = detectedIp + ":" + port;
-            logger.debug(LOG_PREFIX + "Auto-detected public IP: %s", result);
-            return result;
+            return detectedIp + ":" + port;
         }
 
         // Fallback to bind address
         String address = geyser.config().bedrock().address();
-        logger.debug(LOG_PREFIX + "Auto-detection failed. Bind address from config: %s", address);
         if ("0.0.0.0".equals(address)) {
             address = "127.0.0.1";
         }
@@ -199,7 +186,6 @@ public class EducationAuthManager {
     // ---- Main Auth Flow ----
 
     private void runAuthFlow() {
-        logger.debug(LOG_PREFIX + "Auth flow started.");
         try {
             loadSession();
             restoreOrAuthenticate();
@@ -208,8 +194,6 @@ public class EducationAuthManager {
             // This is best-effort: may fail if user is not a tenant admin
             tryEditTenantSettings();
 
-            // Register IP with MESS
-            logger.debug(LOG_PREFIX + "Hosting server at %s...", serverIp);
             hostServer();
 
             // Configure server via tooling API (PascalCase, api-version 2.0)
@@ -218,13 +202,11 @@ public class EducationAuthManager {
             saveSession();
 
             logger.info(LOG_PREFIX + "Server hosted at " + serverIp);
-            logger.debug(LOG_PREFIX + "Server token expires: %s", formatExpiry(serverTokenExpires));
             logger.info(LOG_PREFIX + "Server is fully configured and broadcasted.");
             logger.info(LOG_PREFIX + "Students can now connect from the server list.");
 
             scheduleServerUpdates();
             scheduleTokenRefresh();
-            logger.debug(LOG_PREFIX + "Auth flow completed successfully.");
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Authentication flow failed: " + e.getMessage(), e);
         }
@@ -235,10 +217,7 @@ public class EducationAuthManager {
         boolean hasEduSession = eduRefreshToken != null && !eduRefreshToken.isEmpty();
 
         if (hasToolingSession && hasEduSession) {
-            logger.debug(LOG_PREFIX + "Session restored.");
-            logger.debug(LOG_PREFIX + "Session state: serverId=%s, hasRefreshToken=%s, hasEduRefreshToken=%s, hasServerToken=%s",
-                    serverId, true, true, (serverToken != null));
-
+            logger.debug(LOG_PREFIX + "Session restored (serverId=%s).", serverId);
             if (serverId == null || serverId.isEmpty()) {
                 logger.warning(LOG_PREFIX + "Session has no serverId. Clearing session and re-authenticating...");
                 deleteSession();
@@ -246,7 +225,6 @@ public class EducationAuthManager {
                 ensureValidAccessToken(true);
                 ensureValidEduAccessToken(true);
                 fetchServerToken();
-                logger.debug(LOG_PREFIX + "Tokens refreshed silently.");
                 return;
             }
         } else if (hasToolingSession || hasEduSession) {
@@ -326,31 +304,22 @@ public class EducationAuthManager {
         if (logger == null) {
             return;
         }
-        logger.debug(LOG_PREFIX + "Shutdown initiated.");
-
         if (updateTask != null) {
             updateTask.cancel(false);
-            logger.debug(LOG_PREFIX + "Server update task cancelled.");
         }
         if (tokenRefreshTask != null) {
             tokenRefreshTask.cancel(false);
-            logger.debug(LOG_PREFIX + "Token refresh task cancelled.");
         }
 
         if (serverToken != null) {
             try {
-                logger.debug(LOG_PREFIX + "Sending dehost request...");
                 dehostServer();
-                logger.debug(LOG_PREFIX + "Server dehosted.");
             } catch (Exception e) {
                 logger.error(LOG_PREFIX + "Failed to dehost server: " + e.getMessage(), e);
             }
-        } else {
-            logger.debug(LOG_PREFIX + "No server token, skipping dehost.");
         }
 
         saveSession();
-        logger.debug(LOG_PREFIX + "Shutdown complete.");
     }
 
     // ---- Device Code Flow (OAuth v2.0 with scope parameter) ----
@@ -386,9 +355,6 @@ public class EducationAuthManager {
      * Returns the raw token response JSON (caller extracts access_token, refresh_token, etc.).
      */
     private JsonObject doDeviceCodeFlow(String clientId, String label) throws IOException, InterruptedException {
-        logger.debug(LOG_PREFIX + "Starting device code flow (v2.0, %s app ID=%s)...", label, clientId);
-        logger.debug(LOG_PREFIX + "POST %s/devicecode (client_id=%s, scope=%s)", ENTRA_BASE, clientId, SCOPE);
-
         String body = "client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
                 + "&scope=" + URLEncoder.encode(SCOPE, StandardCharsets.UTF_8);
         JsonObject deviceCodeResponse = postForm(ENTRA_BASE + "/devicecode", body);
@@ -400,9 +366,6 @@ public class EducationAuthManager {
                 : deviceCodeResponse.get("verification_url").getAsString();
         int expiresIn = deviceCodeResponse.get("expires_in").getAsInt();
         int interval = deviceCodeResponse.get("interval").getAsInt();
-
-        logger.debug(LOG_PREFIX + "Device code obtained. user_code=%s, expires_in=%ss, poll_interval=%ss",
-                userCode, expiresIn, interval);
 
         logger.info(LOG_PREFIX + "============================================");
         logger.info(LOG_PREFIX + "  Go to: " + verificationUri);
@@ -423,7 +386,6 @@ public class EducationAuthManager {
             pollCount++;
 
             try {
-                logger.debug(LOG_PREFIX + "Polling for %s token (attempt %s)...", label, pollCount);
                 JsonObject tokenResponse = postForm(ENTRA_BASE + "/token", pollBody);
                 if (tokenResponse.has("access_token")) {
                     logger.info(LOG_PREFIX + "Authentication successful (" + label + ")!");
@@ -462,11 +424,9 @@ public class EducationAuthManager {
 
     private boolean refreshAccessToken() {
         if (refreshToken == null) {
-            logger.debug(LOG_PREFIX + "No tooling refresh token available, cannot refresh.");
             return false;
         }
         try {
-            logger.debug(LOG_PREFIX + "Refreshing tooling access token (v2.0)...");
             String body = "grant_type=refresh_token"
                     + "&client_id=" + URLEncoder.encode(TOOLING_CLIENT_ID, StandardCharsets.UTF_8)
                     + "&refresh_token=" + URLEncoder.encode(refreshToken, StandardCharsets.UTF_8)
@@ -478,12 +438,10 @@ public class EducationAuthManager {
                 this.refreshToken = response.has("refresh_token")
                         ? response.get("refresh_token").getAsString() : this.refreshToken;
                 this.accessTokenExpires = parseTokenExpiry(response);
-                logger.debug(LOG_PREFIX + "Tooling token refreshed. New expiry: %s (in %ss)",
-                        formatExpiry(accessTokenExpires), (accessTokenExpires - Instant.now().getEpochSecond()));
+                logger.debug(LOG_PREFIX + "Tooling token refreshed, expires %s.", formatExpiry(accessTokenExpires));
                 saveSession();
                 return true;
             }
-            logger.debug(LOG_PREFIX + "Tooling token refresh response did not contain access_token.");
             return false;
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Failed to refresh tooling token: " + e.getMessage(), e);
@@ -493,10 +451,8 @@ public class EducationAuthManager {
 
     private void ensureValidAccessToken(boolean allowReauth) throws IOException, InterruptedException {
         if (!isAccessTokenExpired()) {
-            logger.debug(LOG_PREFIX + "Tooling access token still valid (expires %s).", formatExpiry(accessTokenExpires));
             return;
         }
-        logger.debug(LOG_PREFIX + "Tooling access token expired (%s). Attempting refresh...", formatExpiry(accessTokenExpires));
         if (!refreshAccessToken()) {
             if (allowReauth) {
                 logger.warning(LOG_PREFIX + "Tooling token refresh failed. Re-authenticating...");
@@ -512,11 +468,9 @@ public class EducationAuthManager {
 
     private boolean refreshEduAccessToken() {
         if (eduRefreshToken == null) {
-            logger.debug(LOG_PREFIX + "No edu client refresh token available, cannot refresh.");
             return false;
         }
         try {
-            logger.debug(LOG_PREFIX + "Refreshing edu client access token (v2.0)...");
             String body = "grant_type=refresh_token"
                     + "&client_id=" + URLEncoder.encode(EDU_CLIENT_ID, StandardCharsets.UTF_8)
                     + "&refresh_token=" + URLEncoder.encode(eduRefreshToken, StandardCharsets.UTF_8)
@@ -528,12 +482,10 @@ public class EducationAuthManager {
                 this.eduRefreshToken = response.has("refresh_token")
                         ? response.get("refresh_token").getAsString() : this.eduRefreshToken;
                 this.eduAccessTokenExpires = parseTokenExpiry(response);
-                logger.debug(LOG_PREFIX + "Edu client token refreshed. New expiry: %s (in %ss)",
-                        formatExpiry(eduAccessTokenExpires), (eduAccessTokenExpires - Instant.now().getEpochSecond()));
+                logger.debug(LOG_PREFIX + "Edu client token refreshed, expires %s.", formatExpiry(eduAccessTokenExpires));
                 saveSession();
                 return true;
             }
-            logger.debug(LOG_PREFIX + "Edu client token refresh response did not contain access_token.");
             return false;
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Failed to refresh edu client token: " + e.getMessage(), e);
@@ -543,10 +495,8 @@ public class EducationAuthManager {
 
     private void ensureValidEduAccessToken(boolean allowReauth) throws IOException, InterruptedException {
         if (eduAccessTokenExpires > Instant.now().getEpochSecond() + TOKEN_EXPIRY_BUFFER_SECONDS) {
-            logger.debug(LOG_PREFIX + "Edu client access token still valid (expires %s).", formatExpiry(eduAccessTokenExpires));
             return;
         }
-        logger.debug(LOG_PREFIX + "Edu client access token expired (%s). Attempting refresh...", formatExpiry(eduAccessTokenExpires));
         if (!refreshEduAccessToken()) {
             if (allowReauth) {
                 logger.warning(LOG_PREFIX + "Edu client token refresh failed. Re-authenticating...");
@@ -566,7 +516,6 @@ public class EducationAuthManager {
             body.addProperty("DedicatedServerEnabled", true);
             body.addProperty("TeachersAllowed", true);
             body.addProperty("CrossTenantAllowed", true);
-            logger.debug(LOG_PREFIX + "POST %s/tooling/edit_tenant_settings: %s", MESS_BASE, body);
             postJsonWithAuth(MESS_BASE + "/tooling/edit_tenant_settings", accessToken, body.toString());
             logger.info(LOG_PREFIX + "Tenant settings configured: dedicated servers enabled, teacher access enabled, cross-tenant enabled.");
         } catch (IOException e) {
@@ -579,11 +528,8 @@ public class EducationAuthManager {
     // ---- Server Registration ----
 
     private void registerNewServer() throws IOException {
-        logger.debug(LOG_PREFIX + "POST %s/server/register (auth: edu client access token)", MESS_BASE);
         String jwtResponse = postEmptyWithAuth(MESS_BASE + "/server/register", eduAccessToken);
-        logger.debug(LOG_PREFIX + "Register response JWT length: %s", jwtResponse.length());
         parseServerTokenJwt(jwtResponse);
-        logger.debug(LOG_PREFIX + "Registered new server. ServerId=%s", serverId);
     }
 
     // ---- Edit Server Info (PascalCase, api-version 2.0) ----
@@ -600,7 +546,6 @@ public class EducationAuthManager {
             body.addProperty("IsBroadcasted", true);
             body.addProperty("SharingEnabled", true);
             body.addProperty("CrossTenantAllowed", true);
-            logger.debug(LOG_PREFIX + "POST %s/tooling/edit_server_info (api-version: 2.0): %s", MESS_BASE, body);
             postJsonWithAuth(MESS_BASE + "/tooling/edit_server_info", accessToken, body.toString(),
                     Map.of("api-version", "2.0"));
             String nameInfo = (serverName != null && !serverName.isEmpty()) ? ", name='" + serverName + "'" : "";
@@ -620,11 +565,8 @@ public class EducationAuthManager {
         }
         String url = MESS_BASE + "/server/fetch_token?serverId="
                 + URLEncoder.encode(serverId, StandardCharsets.UTF_8);
-        logger.debug(LOG_PREFIX + "GET %s (auth: edu client access token)", url);
         String jwtResponse = getWithAuth(url, eduAccessToken);
-        logger.debug(LOG_PREFIX + "fetch_token response JWT length: %s", jwtResponse.length());
         parseServerTokenJwt(jwtResponse);
-        logger.debug(LOG_PREFIX + "Server token fetched. Expires: %s", formatExpiry(serverTokenExpires));
     }
 
     // ---- Parse JWT ----
@@ -633,17 +575,10 @@ public class EducationAuthManager {
         this.serverTokenJwt = jwtResponse.trim();
         String[] parts = serverTokenJwt.split("\\.");
         if (parts.length < 2) {
-            logger.debug(LOG_PREFIX + "JWT parse failed. Raw response (first 200 chars): %s",
-                    jwtResponse.substring(0, Math.min(200, jwtResponse.length())));
             throw new IOException("Invalid JWT response (got " + parts.length + " parts, expected 3)");
         }
-        logger.debug(LOG_PREFIX + "JWT has %s parts. Decoding header + payload...", parts.length);
-
-        String headerJson = new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8);
-        logger.debug(LOG_PREFIX + "Server token JWT header: %s", headerJson);
 
         String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-        logger.debug(LOG_PREFIX + "JWT payload: %s", payloadJson);
 
         JsonObject payload = JsonParser.parseString(payloadJson).getAsJsonObject();
 
@@ -661,9 +596,6 @@ public class EducationAuthManager {
         } else {
             throw new IOException("JWT payload missing serverToken field. Keys present: " + innerPayload.keySet());
         }
-
-        logger.debug(LOG_PREFIX + "Parsed JWT: exp=%s (%s), serverToken length=%s",
-                serverTokenExpires, formatExpiry(serverTokenExpires), serverToken.length());
 
         // Extract tenant ID and register in multi-tenancy pool
         String tenantId = extractTenantIdFromServerToken(serverToken);
@@ -695,13 +627,10 @@ public class EducationAuthManager {
         connectionInfo.add("transportInfo", transportInfo);
         JsonObject body = new JsonObject();
         body.add("connectionInfo", connectionInfo);
-        logger.debug(LOG_PREFIX + "POST %s/server/host: %s", MESS_BASE, body);
         postJsonWithAuth(MESS_BASE + "/server/host", serverToken, body.toString());
-        logger.debug(LOG_PREFIX + "Host request successful.");
     }
 
     private void dehostServer() throws IOException {
-        logger.debug(LOG_PREFIX + "POST %s/server/dehost (auth: server token)", MESS_BASE);
         postEmptyWithAuth(MESS_BASE + "/server/dehost", serverToken);
     }
 
@@ -711,7 +640,6 @@ public class EducationAuthManager {
             String json = "{\"playerCount\":" + eduPlayerCount
                     + ",\"maxPlayers\":" + maxPlayers
                     + ",\"health\":" + MESS_HEALTH_OPTIMAL + "}";
-            logger.debug(LOG_PREFIX + "POST %s/server/update: %s", MESS_BASE, json);
             postJsonWithAuth(MESS_BASE + "/server/update", serverToken, json);
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Server update failed: " + e.getMessage(), e);
@@ -733,35 +661,28 @@ public class EducationAuthManager {
     private void scheduleServerUpdates() {
         ScheduledExecutorService thread = geyser.getScheduledThread();
         updateTask = thread.scheduleAtFixedRate(this::sendServerUpdate, 10, 10, TimeUnit.SECONDS);
-        logger.debug(LOG_PREFIX + "Server update task scheduled: every 10 seconds.");
     }
 
     private void scheduleTokenRefresh() {
         ScheduledExecutorService thread = geyser.getScheduledThread();
         tokenRefreshTask = thread.scheduleAtFixedRate(() -> {
             try {
-                logger.debug(LOG_PREFIX + "Scheduled token refresh starting...");
                 ensureValidAccessToken(false);
                 ensureValidEduAccessToken(false);
                 fetchServerToken();
                 saveSession();
-                logger.debug(LOG_PREFIX + "Tokens refreshed successfully.");
-                logger.debug(LOG_PREFIX + "Next server token expiry: %s", formatExpiry(serverTokenExpires));
             } catch (Exception e) {
                 logger.error(LOG_PREFIX + "Scheduled token refresh error: " + e.getMessage(), e);
             }
         }, 30, 30, TimeUnit.MINUTES);
-        logger.debug(LOG_PREFIX + "Token refresh task scheduled: every 30 minutes.");
     }
 
     // ---- Session Persistence ----
 
     private void loadSession() {
         if (!Files.exists(sessionFilePath)) {
-            logger.debug(LOG_PREFIX + "No session file found at %s", sessionFilePath);
             return;
         }
-        logger.debug(LOG_PREFIX + "Loading session from %s...", sessionFilePath);
         try (Reader reader = new FileReader(sessionFilePath.toFile())) {
             JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();
             this.refreshToken = getStringOrNull(obj, "refresh_token");
@@ -775,10 +696,7 @@ public class EducationAuthManager {
             this.serverTokenExpires = obj.has("server_token_expires") ? obj.get("server_token_expires").getAsLong() : 0;
             if ((serverId == null || serverId.isEmpty()) && obj.has("server_id")) {
                 this.serverId = getStringOrNull(obj, "server_id");
-                logger.debug(LOG_PREFIX + "Restored serverId from session: %s", serverId);
             }
-            logger.debug(LOG_PREFIX + "Session loaded: hasRefreshToken=%s, hasEduRefreshToken=%s, hasServerTokenJwt=%s",
-                    (refreshToken != null), (eduRefreshToken != null), (serverTokenJwt != null));
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Failed to load session file: " + e.getMessage(), e);
         }
@@ -786,7 +704,6 @@ public class EducationAuthManager {
 
     private void saveSession() {
         if (sessionFilePath == null) {
-            logger.debug(LOG_PREFIX + "Cannot save session, sessionFilePath is null.");
             return;
         }
         try {
@@ -806,17 +723,14 @@ public class EducationAuthManager {
             try (Writer writer = new FileWriter(sessionFilePath.toFile())) {
                 GeyserImpl.GSON.toJson(obj, writer);
             }
-            logger.debug(LOG_PREFIX + "Session saved to %s", sessionFilePath);
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Failed to save session file: " + e.getMessage(), e);
         }
     }
 
     private void deleteSession() {
-        logger.debug(LOG_PREFIX + "Deleting session file and clearing all token state...");
         try {
             Files.deleteIfExists(sessionFilePath);
-            logger.debug(LOG_PREFIX + "Session file deleted.");
         } catch (IOException e) {
             logger.warning(LOG_PREFIX + "Failed to delete session file: " + e.getMessage());
         }
@@ -832,11 +746,7 @@ public class EducationAuthManager {
     }
 
     private boolean isAccessTokenExpired() {
-        boolean expired = accessTokenExpires <= Instant.now().getEpochSecond() + TOKEN_EXPIRY_BUFFER_SECONDS;
-        if (expired) {
-            logger.debug(LOG_PREFIX + "Access token is expired or within buffer (expired at %s).", formatExpiry(accessTokenExpires));
-        }
-        return expired;
+        return accessTokenExpires <= Instant.now().getEpochSecond() + TOKEN_EXPIRY_BUFFER_SECONDS;
     }
 
     // ---- IP Detection ----
@@ -850,7 +760,6 @@ public class EducationAuthManager {
         for (String service : services) {
             HttpURLConnection con = null;
             try {
-                logger.debug(LOG_PREFIX + "Trying IP detection service: %s", service);
                 con = (HttpURLConnection) URI.create(service).toURL().openConnection();
                 con.setConnectTimeout(5000);
                 con.setReadTimeout(5000);
@@ -859,27 +768,21 @@ public class EducationAuthManager {
                 if (code == 200) {
                     String ip = readStream(con.getInputStream()).trim();
                     if (!ip.isEmpty() && ip.length() < 46) {
-                        logger.debug(LOG_PREFIX + "IP detection successful via %s: %s", service, ip);
                         return ip;
                     }
-                    logger.debug(LOG_PREFIX + "IP detection via %s returned invalid result: '%s'", service, ip);
-                } else {
-                    logger.debug(LOG_PREFIX + "IP detection via %s returned HTTP %s", service, code);
                 }
-            } catch (Exception e) {
-                logger.debug(LOG_PREFIX + "IP detection via %s failed: %s", service, e.getMessage());
+            } catch (Exception ignored) {
+                // Try next service
             } finally {
                 if (con != null) con.disconnect();
             }
         }
-        logger.debug(LOG_PREFIX + "All IP detection services failed.");
         return null;
     }
 
     // ---- HTTP Helpers ----
 
     private JsonObject postForm(String urlStr, String formBody) throws IOException {
-        logger.debug(LOG_PREFIX + "HTTP POST (form) %s", urlStr);
         HttpURLConnection con = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
         try {
             con.setRequestMethod("POST");
@@ -893,10 +796,8 @@ public class EducationAuthManager {
             }
 
             int code = con.getResponseCode();
-            logger.debug(LOG_PREFIX + "HTTP response: %s from %s", code, urlStr);
             if (code >= 400) {
                 String errorBody = readStream(con.getErrorStream());
-                logger.debug(LOG_PREFIX + "HTTP error body: %s", errorBody);
                 if (errorBody.contains("authorization_pending")) {
                     throw new IOException("authorization_pending");
                 }
@@ -912,7 +813,6 @@ public class EducationAuthManager {
     }
 
     private String getWithAuth(String urlStr, String bearerToken) throws IOException {
-        logger.debug(LOG_PREFIX + "HTTP GET %s", urlStr);
         HttpURLConnection con = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
         try {
             con.setRequestMethod("GET");
@@ -922,10 +822,8 @@ public class EducationAuthManager {
             con.setReadTimeout(HTTP_TIMEOUT);
 
             int code = con.getResponseCode();
-            logger.debug(LOG_PREFIX + "HTTP response: %s from %s", code, urlStr);
             if (code >= 400) {
                 String errorBody = readStream(con.getErrorStream());
-                logger.debug(LOG_PREFIX + "HTTP error body: %s", errorBody);
                 throw new IOException("HTTP " + code + ": " + errorBody);
             }
 
@@ -940,7 +838,6 @@ public class EducationAuthManager {
     }
 
     private void postJsonWithAuth(String urlStr, String bearerToken, String jsonBody, Map<String, String> extraHeaders) throws IOException {
-        logger.debug(LOG_PREFIX + "HTTP POST (json) %s", urlStr);
         HttpURLConnection con = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
         try {
             con.setRequestMethod("POST");
@@ -959,10 +856,8 @@ public class EducationAuthManager {
             }
 
             int code = con.getResponseCode();
-            logger.debug(LOG_PREFIX + "HTTP response: %s from %s", code, urlStr);
             if (code >= 400) {
                 String errorBody = readStream(con.getErrorStream());
-                logger.debug(LOG_PREFIX + "HTTP error body: %s", errorBody);
                 throw new IOException("HTTP " + code + ": " + errorBody);
             }
         } finally {
@@ -971,7 +866,6 @@ public class EducationAuthManager {
     }
 
     private String postEmptyWithAuth(String urlStr, String bearerToken) throws IOException {
-        logger.debug(LOG_PREFIX + "HTTP POST (empty) %s", urlStr);
         HttpURLConnection con = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
         try {
             con.setRequestMethod("POST");
@@ -986,10 +880,8 @@ public class EducationAuthManager {
             }
 
             int code = con.getResponseCode();
-            logger.debug(LOG_PREFIX + "HTTP response: %s from %s", code, urlStr);
             if (code >= 400) {
                 String errorBody = readStream(con.getErrorStream());
-                logger.debug(LOG_PREFIX + "HTTP error body: %s", errorBody);
                 throw new IOException("HTTP " + code + ": " + errorBody);
             }
 
@@ -1176,18 +1068,12 @@ public class EducationAuthManager {
         if (clientTenantId != null && !clientTenantId.isEmpty()) {
             String poolToken = tenantTokenPool.get(clientTenantId);
             if (poolToken != null) {
-                if (logger != null) {
-                    logger.debug("[EduTenancy] Matched token for tenant %s from pool", clientTenantId);
-                }
                 return poolToken;
             }
         }
 
         // Fallback: MESS-registered token
         if (serverToken != null && !serverToken.isEmpty()) {
-            if (logger != null) {
-                logger.debug("[EduTenancy] Using MESS-registered token (fallback)");
-            }
             return serverToken;
         }
 

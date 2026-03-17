@@ -235,7 +235,6 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         // Fire SessionInitializeEvent here as we now know the client data
         geyser.eventBus().fire(new SessionInitializeEvent(session));
 
-        geyser.getLogger().debug("[EduHandshake] Sending PlayStatusPacket LOGIN_SUCCESS");
         PlayStatusPacket playStatus = new PlayStatusPacket();
         playStatus.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
         session.sendUpstreamPacket(playStatus);
@@ -257,8 +256,6 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         resourcePacksInfo.setWorldTemplateId(UUID.randomUUID());
         resourcePacksInfo.setWorldTemplateVersion("*");
 
-        geyser.getLogger().debug("[EduHandshake] Sending ResourcePacksInfoPacket (packs=%s, forced=%s)",
-            resourcePacksInfo.getResourcePackInfos().size(), resourcePacksInfo.isForcedToAccept());
         session.sendUpstreamPacket(resourcePacksInfo);
 
         GeyserLocale.loadGeyserLocale(session.locale());
@@ -267,7 +264,6 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
 
     @Override
     public PacketSignal handle(ResourcePackClientResponsePacket packet) {
-        geyser.getLogger().debug("[EduHandshake] Received ResourcePackClientResponsePacket, status=%s", packet.getStatus());
         if (session.getUpstream().isClosed() || session.isClosed()) {
             return PacketSignal.HANDLED;
         }
