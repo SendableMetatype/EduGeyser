@@ -318,6 +318,9 @@ public class EducationAuthManager {
      * Cancels scheduled tasks, dehosts the server, and cleans up resources.
      */
     public void shutdown() {
+        if (logger == null) {
+            return;
+        }
         logger.debug(LOG_PREFIX + "Shutdown initiated.");
 
         if (updateTask != null) {
