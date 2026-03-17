@@ -179,7 +179,7 @@ public class LoginEncryptionUtils {
                 tenantId != null ? tenantId : "unknown", roleName);
 
         // Optionally verify the EduTokenChain signature against MESS public keys
-        boolean eduVerified = "verified".equalsIgnoreCase(geyser.config().eduAuthMode());
+        boolean eduVerified = "verified".equalsIgnoreCase(geyser.config().education().authMode());
         boolean eduSystemActive = eduAuthMgr != null && eduAuthMgr.isActive();
 
         if (eduVerified && eduSystemActive) {
