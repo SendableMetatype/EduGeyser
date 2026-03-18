@@ -42,6 +42,7 @@ import org.geysermc.cumulus.response.result.ValidFormResponseResult;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.network.EducationAuthManager;
 import org.geysermc.geyser.network.EducationChainVerifier;
+import org.geysermc.geyser.network.EducationTenancyMode;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.auth.AuthData;
 import org.geysermc.geyser.session.auth.BedrockClientData;
@@ -170,28 +171,22 @@ public class LoginEncryptionUtils {
         // Do NOT use data.getTenantId() -- it is always null for edu clients.
         String tenantId = eduAuthMgr.extractTenantIdFromEduTokenChain(data.getEduTokenChain());
         session.setEducationTenantId(tenantId);
-        int adRole = data.getAdRole();
-        String roleName = switch (adRole) {
-            case 0 -> "student";
-            case 1 -> "teacher";
-            default -> "role=" + adRole;
-        };
 
         geyser.getLogger().debug("[EduAuth] Education client: tenant=%s, role=%s",
-                tenantId != null ? tenantId : "unknown", roleName);
+                tenantId != null ? tenantId : "unknown", data.adRoleName());
 
         // Verify the client based on tenancy mode
-        String tenancyMode = geyser.config().education().tenancyMode();
+        EducationTenancyMode tenancyMode = geyser.config().education().tenancyMode();
         String joinerNonce = data.getEduJoinerToHostNonce();
         boolean hasNonce = joinerNonce != null && !joinerNonce.isEmpty();
 
-        if ("standalone".equalsIgnoreCase(tenancyMode)) {
+        if (tenancyMode == EducationTenancyMode.STANDALONE) {
             // Standalone: no MESS registration, no nonce verification possible
             eduAuthMgr.recordUnverifiedJoin();
             return true;
         }
 
-        if ("official".equalsIgnoreCase(tenancyMode)) {
+        if (tenancyMode == EducationTenancyMode.OFFICIAL) {
             // Official: nonce is required
             if (!hasNonce) {
                 geyser.getLogger().warning("[EduAuth] Rejected: no nonce (official mode requires server list connection)");

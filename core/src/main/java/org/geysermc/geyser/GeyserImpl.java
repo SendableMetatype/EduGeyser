@@ -82,6 +82,7 @@ import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
 import org.geysermc.geyser.network.EducationAuthManager;
+import org.geysermc.geyser.network.EducationTenancyMode;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -511,13 +512,13 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
 
         // Initialize Education Edition auth manager and token pool
         this.educationAuthManager = new EducationAuthManager();
-        String tenancyMode = config.education().tenancyMode();
-        if (!"standalone".equalsIgnoreCase(tenancyMode)) {
+        EducationTenancyMode tenancyMode = config.education().tenancyMode();
+        if (tenancyMode != EducationTenancyMode.STANDALONE) {
             this.educationAuthManager.initialize(this);
         } else {
             logger.debug("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
         }
-        if (!"official".equalsIgnoreCase(tenancyMode)) {
+        if (tenancyMode != EducationTenancyMode.OFFICIAL) {
             this.educationAuthManager.loadConfigTokens(this);
         }
         logger.debug("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount());

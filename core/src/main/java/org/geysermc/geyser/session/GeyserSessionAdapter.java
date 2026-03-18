@@ -261,7 +261,7 @@ public class GeyserSessionAdapter extends SessionAdapter {
      */
     private static final long EDUCATION_UUID_MSB = 0x0000000100000001L;
 
-    private static UUID createEducationUuid(String tenantId, String username) {
+    static UUID createEducationUuid(String tenantId, String username) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest((tenantId + ":" + username).getBytes(StandardCharsets.UTF_8));

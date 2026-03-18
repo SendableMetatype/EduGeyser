@@ -133,6 +133,17 @@ public final class BedrockClientData {
     private String tenantId;
     @SerializedName(value = "ADRole")
     private int adRole;
+
+    /**
+     * Returns a human-readable name for the AD role code.
+     */
+    public String adRoleName() {
+        return switch (adRole) {
+            case 0 -> "student";
+            case 1 -> "teacher";
+            default -> "role=" + adRole;
+        };
+    }
     @SerializedName(value = "EduJoinerToHostNonce")
     private String eduJoinerToHostNonce;
     @SerializedName(value = "EduSessionToken")
