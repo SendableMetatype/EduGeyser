@@ -29,6 +29,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.geysermc.geyser.Constants;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.api.network.AuthType;
+import org.geysermc.geyser.network.EducationTenancyMode;
 import org.geysermc.geyser.api.network.BedrockListener;
 import org.geysermc.geyser.api.network.RemoteServer;
 import org.geysermc.geyser.network.GameProtocol;
@@ -393,8 +394,9 @@ public interface GeyserConfig {
                            connect using manually-provided tokens in server-tokens.
                 "standalone" = No MESS registration. All tokens come from server-tokens.
                                Each token is parsed on startup to extract its tenant ID for routing.""")
-        @DefaultString("official")
-        String tenancyMode();
+        default EducationTenancyMode tenancyMode() {
+            return EducationTenancyMode.OFFICIAL;
+        }
 
         @Comment("""
                 Additional server tokens for hybrid or standalone multi-tenancy mode.

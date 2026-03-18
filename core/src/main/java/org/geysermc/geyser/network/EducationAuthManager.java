@@ -135,6 +135,7 @@ public class EducationAuthManager {
     // Tenant IDs that came from config (server-tokens), as opposed to MESS registration
     private final ConcurrentHashMap.KeySetView<String, Boolean> configTrustTenants = ConcurrentHashMap.newKeySet();
 
+    private final Object sessionFileLock = new Object();
     private volatile ScheduledFuture<?> updateTask;
     private volatile ScheduledFuture<?> tokenRefreshTask;
     private volatile boolean shutdownRequested;
@@ -544,19 +545,24 @@ public class EducationAuthManager {
         }
     }
 
-    private void ensureValidAccessToken(boolean allowReauth) throws IOException, InterruptedException {
+    /**
+     * @return true if the access token is valid after this call
+     */
+    private boolean ensureValidAccessToken(boolean allowReauth) throws IOException, InterruptedException {
         if (!isAccessTokenExpired()) {
-            return;
+            return true;
         }
-        if (!refreshAccessToken()) {
-            if (allowReauth) {
-                logger.warning(LOG_PREFIX + "Tooling token refresh failed. Re-authenticating...");
-                deleteSession();
-                doDeviceCodeFlows();
-            } else {
-                logger.error(LOG_PREFIX + "Tooling token refresh failed. Cannot re-authenticate from a scheduled task. Use '/geyser edu reset' to manually re-authenticate.");
-            }
+        if (refreshAccessToken()) {
+            return true;
         }
+        if (allowReauth) {
+            logger.warning(LOG_PREFIX + "Tooling token refresh failed. Re-authenticating...");
+            deleteSession();
+            doDeviceCodeFlows();
+        } else {
+            logger.error(LOG_PREFIX + "Tooling token refresh failed. Cannot re-authenticate from a scheduled task. Use '/geyser edu reset' to manually re-authenticate.");
+        }
+        return false;
     }
 
     // ---- Edu Client Token Refresh ----
@@ -588,19 +594,24 @@ public class EducationAuthManager {
         }
     }
 
-    private void ensureValidEduAccessToken(boolean allowReauth) throws IOException, InterruptedException {
+    /**
+     * @return true if the edu access token is valid after this call
+     */
+    private boolean ensureValidEduAccessToken(boolean allowReauth) throws IOException, InterruptedException {
         if (eduAccessTokenExpires > Instant.now().getEpochSecond() + TOKEN_EXPIRY_BUFFER_SECONDS) {
-            return;
+            return true;
         }
-        if (!refreshEduAccessToken()) {
-            if (allowReauth) {
-                logger.warning(LOG_PREFIX + "Edu client token refresh failed. Re-authenticating...");
-                deleteSession();
-                doDeviceCodeFlows();
-            } else {
-                logger.error(LOG_PREFIX + "Edu client token refresh failed. Cannot re-authenticate from a scheduled task. Use '/geyser edu reset' to manually re-authenticate.");
-            }
+        if (refreshEduAccessToken()) {
+            return true;
         }
+        if (allowReauth) {
+            logger.warning(LOG_PREFIX + "Edu client token refresh failed. Re-authenticating...");
+            deleteSession();
+            doDeviceCodeFlows();
+        } else {
+            logger.error(LOG_PREFIX + "Edu client token refresh failed. Cannot re-authenticate from a scheduled task. Use '/geyser edu reset' to manually re-authenticate.");
+        }
+        return false;
     }
 
     // ---- Tenant Settings (auto-enable dedicated servers) ----
@@ -762,8 +773,9 @@ public class EducationAuthManager {
         ScheduledExecutorService thread = geyser.getScheduledThread();
         tokenRefreshTask = thread.scheduleAtFixedRate(() -> {
             try {
-                ensureValidAccessToken(false);
-                ensureValidEduAccessToken(false);
+                if (!ensureValidAccessToken(false) || !ensureValidEduAccessToken(false)) {
+                    return;
+                }
                 fetchServerToken();
                 saveSession();
             } catch (Exception e) {
@@ -775,69 +787,75 @@ public class EducationAuthManager {
     // ---- Session Persistence ----
 
     private void loadSession() {
-        if (!Files.exists(sessionFilePath)) {
-            return;
-        }
-        try (Reader reader = new FileReader(sessionFilePath.toFile())) {
-            JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();
-            this.refreshToken = getStringOrNull(obj, "refresh_token");
-            this.accessToken = getStringOrNull(obj, "access_token");
-            this.accessTokenExpires = obj.has("access_token_expires") ? obj.get("access_token_expires").getAsLong() : 0;
-            this.eduRefreshToken = getStringOrNull(obj, "edu_refresh_token");
-            this.eduAccessToken = getStringOrNull(obj, "edu_access_token");
-            this.eduAccessTokenExpires = obj.has("edu_access_token_expires") ? obj.get("edu_access_token_expires").getAsLong() : 0;
-            this.serverToken = getStringOrNull(obj, "server_token");
-            this.serverTokenJwt = getStringOrNull(obj, "server_token_jwt");
-            this.serverTokenExpires = obj.has("server_token_expires") ? obj.get("server_token_expires").getAsLong() : 0;
-            if ((serverId == null || serverId.isEmpty()) && obj.has("server_id")) {
-                this.serverId = getStringOrNull(obj, "server_id");
+        synchronized (sessionFileLock) {
+            if (!Files.exists(sessionFilePath)) {
+                return;
             }
-        } catch (Exception e) {
-            logger.error(LOG_PREFIX + "Failed to load session file: " + e.getMessage(), e);
+            try (Reader reader = new FileReader(sessionFilePath.toFile())) {
+                JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();
+                this.refreshToken = getStringOrNull(obj, "refresh_token");
+                this.accessToken = getStringOrNull(obj, "access_token");
+                this.accessTokenExpires = obj.has("access_token_expires") ? obj.get("access_token_expires").getAsLong() : 0;
+                this.eduRefreshToken = getStringOrNull(obj, "edu_refresh_token");
+                this.eduAccessToken = getStringOrNull(obj, "edu_access_token");
+                this.eduAccessTokenExpires = obj.has("edu_access_token_expires") ? obj.get("edu_access_token_expires").getAsLong() : 0;
+                this.serverToken = getStringOrNull(obj, "server_token");
+                this.serverTokenJwt = getStringOrNull(obj, "server_token_jwt");
+                this.serverTokenExpires = obj.has("server_token_expires") ? obj.get("server_token_expires").getAsLong() : 0;
+                if ((serverId == null || serverId.isEmpty()) && obj.has("server_id")) {
+                    this.serverId = getStringOrNull(obj, "server_id");
+                }
+            } catch (Exception e) {
+                logger.error(LOG_PREFIX + "Failed to load session file: " + e.getMessage(), e);
+            }
         }
     }
 
     private void saveSession() {
-        if (sessionFilePath == null) {
-            return;
-        }
-        try {
-            JsonObject obj = new JsonObject();
-            if (serverId != null && !serverId.isEmpty()) {
-                obj.addProperty("server_id", serverId);
+        synchronized (sessionFileLock) {
+            if (sessionFilePath == null) {
+                return;
             }
-            obj.addProperty("refresh_token", refreshToken);
-            obj.addProperty("access_token", accessToken);
-            obj.addProperty("access_token_expires", accessTokenExpires);
-            obj.addProperty("edu_refresh_token", eduRefreshToken);
-            obj.addProperty("edu_access_token", eduAccessToken);
-            obj.addProperty("edu_access_token_expires", eduAccessTokenExpires);
-            obj.addProperty("server_token", serverToken);
-            obj.addProperty("server_token_jwt", serverTokenJwt);
-            obj.addProperty("server_token_expires", serverTokenExpires);
-            try (Writer writer = new FileWriter(sessionFilePath.toFile())) {
-                GeyserImpl.GSON.toJson(obj, writer);
+            try {
+                JsonObject obj = new JsonObject();
+                if (serverId != null && !serverId.isEmpty()) {
+                    obj.addProperty("server_id", serverId);
+                }
+                obj.addProperty("refresh_token", refreshToken);
+                obj.addProperty("access_token", accessToken);
+                obj.addProperty("access_token_expires", accessTokenExpires);
+                obj.addProperty("edu_refresh_token", eduRefreshToken);
+                obj.addProperty("edu_access_token", eduAccessToken);
+                obj.addProperty("edu_access_token_expires", eduAccessTokenExpires);
+                obj.addProperty("server_token", serverToken);
+                obj.addProperty("server_token_jwt", serverTokenJwt);
+                obj.addProperty("server_token_expires", serverTokenExpires);
+                try (Writer writer = new FileWriter(sessionFilePath.toFile())) {
+                    GeyserImpl.GSON.toJson(obj, writer);
+                }
+            } catch (Exception e) {
+                logger.error(LOG_PREFIX + "Failed to save session file: " + e.getMessage(), e);
             }
-        } catch (Exception e) {
-            logger.error(LOG_PREFIX + "Failed to save session file: " + e.getMessage(), e);
         }
     }
 
     private void deleteSession() {
-        try {
-            Files.deleteIfExists(sessionFilePath);
-        } catch (IOException e) {
-            logger.warning(LOG_PREFIX + "Failed to delete session file: " + e.getMessage());
+        synchronized (sessionFileLock) {
+            try {
+                Files.deleteIfExists(sessionFilePath);
+            } catch (IOException e) {
+                logger.warning(LOG_PREFIX + "Failed to delete session file: " + e.getMessage());
+            }
+            this.refreshToken = null;
+            this.accessToken = null;
+            this.accessTokenExpires = 0;
+            this.eduRefreshToken = null;
+            this.eduAccessToken = null;
+            this.eduAccessTokenExpires = 0;
+            this.serverToken = null;
+            this.serverTokenJwt = null;
+            this.serverTokenExpires = 0;
         }
-        this.refreshToken = null;
-        this.accessToken = null;
-        this.accessTokenExpires = 0;
-        this.eduRefreshToken = null;
-        this.eduAccessToken = null;
-        this.eduAccessTokenExpires = 0;
-        this.serverToken = null;
-        this.serverTokenJwt = null;
-        this.serverTokenExpires = 0;
     }
 
     private boolean isAccessTokenExpired() {
@@ -1164,7 +1182,7 @@ public class EducationAuthManager {
                     registerServerTokenFromConfig(token.trim(), "config edu-server-tokens");
                 }
             }
-        } else if ("standalone".equalsIgnoreCase(geyser.config().education().tenancyMode())) {
+        } else if (geyser.config().education().tenancyMode() == EducationTenancyMode.STANDALONE) {
             geyser.getLogger().warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
         }
     }

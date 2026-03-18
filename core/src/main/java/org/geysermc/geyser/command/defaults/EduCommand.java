@@ -127,12 +127,8 @@ public class EduCommand extends GeyserCommand {
                 String name = session.bedrockUsername();
                 String tenantId = session.getEducationTenantId() != null
                         ? session.getEducationTenantId() : "unknown";
-                int adRole = session.getClientData() != null ? session.getClientData().getAdRole() : -1;
-                String roleName = switch (adRole) {
-                    case 0 -> "student";
-                    case 1 -> "teacher";
-                    default -> "role=" + adRole;
-                };
+                String roleName = session.getClientData() != null
+                        ? session.getClientData().adRoleName() : "unknown";
                 source.sendMessage(ChatColor.WHITE + "  " + name + ChatColor.GRAY
                         + " (tenant: " + tenantId + ", " + roleName + ")");
             }
