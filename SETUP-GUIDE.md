@@ -58,7 +58,7 @@ Choose your setup method based on your situation:
 
 ### Overview
 
-In Standalone Mode, you manually obtain a token from Microsoft's Education services by briefly hosting a world in Education Edition. The token authorizes your Geyser server to accept Education connections from your school's tenant. Students connect using the included server list resource pack (recommended) or a one-time link - the server does not appear in Education Edition's built-in server list.
+In Standalone Mode, you obtain a token from Microsoft's Education services using the EduGeyser Token Tool. The token authorizes your Geyser server to accept Education connections from your school's tenant. Students connect using the included server list resource pack (recommended) or a one-time link - the server does not appear in Education Edition's built-in server list.
 
 ### Step 1: Install EduGeyser
 
@@ -68,7 +68,7 @@ In Standalone Mode, you manually obtain a token from Microsoft's Education servi
 
 ### Step 2: Obtain a Server Token
 
-You need a `serverToken` from Microsoft that proves your server is authorized for your school's tenant. Any student or teacher with an M365 Education account at the school can do this.
+You need a server token from Microsoft that authorizes your server for your school's tenant. Any student or teacher with an M365 Education account at the school can obtain one using the Token Tool.
 
 #### Option 1: EduGeyser Token Tool (Easiest)
 
@@ -82,7 +82,7 @@ You need a `serverToken` from Microsoft that proves your server is authorized fo
 
 #### Option 2: Manual Fiddler Capture
 
-If the EduGeyser Token Tool doesn't work for you, see the [Manual Token Capture Guide](#manual-token-capture-fiddler) in the appendix below.
+If the EduGeyser Token Tool doesn't work for you, see the [Manual Token Capture Guide](MANUAL-TOKEN-CAPTURE.md) for an alternative method using Fiddler.
 
 ### Step 3: Configure Geyser
 
@@ -136,7 +136,7 @@ You have two options - see [How Students Connect](#how-students-connect) for ful
 
 ### Token Renewal
 
-The server token expires after approximately 2 weeks. When it expires, students will get a connection error. Repeat Step 2 to get a fresh token and update `server-tokens` in config.
+The server token expires after approximately 2 weeks. When it expires, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update `server-tokens` in config.
 
 Students using the resource pack won't need to re-enter the server address. Only the server-side token needs updating.
 
@@ -285,7 +285,7 @@ education:
     - "token-from-school-C"
 ```
 
-In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using tokens you obtain via the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) or [Fiddler](#manual-token-capture-fiddler), using an account from each additional school.
+In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using tokens you obtain via the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe), using an account from each additional school.
 
 Each token contains the school's tenant ID. EduGeyser parses them on startup and routes connecting students to the correct token automatically.
 
@@ -457,7 +457,7 @@ See the [Dedicated Server FAQ](https://edusupport.minecraft.net/hc/en-us/article
 
 The school's M365 tenant has **Conditional Access** policies that block the device code authentication flow. This is common in large school districts with strict security policies.
 
-**Workaround:** Use Standalone Mode (Method A) instead. The EduGeyser Token Tool works around conditional access by capturing the token through Education Edition's own authentication flow.
+**Workaround:** Use Standalone Mode (Method A) instead. The EduGeyser Token Tool uses a different authentication method that is not affected by Conditional Access policies.
 
 ### Device code flow times out / no prompt appears
 
@@ -500,7 +500,7 @@ No additional software is needed. For the best experience, distribute the includ
 
 ### Is this safe for schools?
 
-EduGeyser preserves Microsoft's tenant-based authentication. Students authenticate through their school's Microsoft 365 accounts. The server token system ensures only authorized servers can accept Education connections.
+EduGeyser preserves Microsoft's tenant-based authentication. Students authenticate through their school's Microsoft 365 accounts. In official and hybrid modes, connecting clients are verified against Microsoft's server via nonce checking. The server token system ensures only authorized servers can accept Education connections.
 
 ### How many students can connect?
 
@@ -525,57 +525,6 @@ Yes, there are two ways:
 ---
 
 ## Appendix
-
-### Manual Token Capture (Fiddler)
-
-If the EduGeyser Token Tool doesn't work, you can capture the token manually using Fiddler Classic:
-
-**Prerequisites:**
-- [Fiddler Classic](https://www.telerik.com/fiddler/fiddler-classic) installed (free)
-- Run this command as Administrator to allow capturing Education Edition traffic:
-  ```
-  CheckNetIsolation LoopbackExempt -a -n="Microsoft.MinecraftEducationEdition_8wekyb3d8bbwe"
-  ```
-
-**Fiddler Setup:**
-1. Open Fiddler Classic
-2. Go to **Tools → Options → HTTPS**
-3. Check **"Capture HTTPS CONNECTs"**
-4. Check **"Decrypt HTTPS traffic"** (accept certificate prompts)
-5. Check **"Ignore server certificate errors"**
-6. Check **WinConfig** and verify Education Edition is listed for exemption
-7. Make sure "Capturing" shows in the bottom-left (press F12 to toggle)
-
-**Important:** Education Edition uses WinHTTP, not WinINET. If Fiddler isn't capturing traffic, you may also need to set the WinHTTP proxy manually:
-```
-netsh winhttp set proxy 127.0.0.1:8888
-```
-Reset after capturing:
-```
-netsh winhttp reset proxy
-```
-
-**Capture Process:**
-1. Clear Fiddler's session list (Ctrl+X)
-2. Open a world in Education Edition (singleplayer)
-3. Start hosting the world (click "Host")
-4. In Fiddler, look for a POST request to `discovery.minecrafteduservices.com/host`
-5. Click the request, go to the **Inspectors** tab → **Headers**
-6. Copy the full value of the `Authorization: Bearer` header (everything after "Bearer ")
-
-**Exchange for server token (PowerShell):**
-
-```powershell
-$token = "PASTE_YOUR_BEARER_TOKEN_HERE"
-$response = Invoke-RestMethod -Method Post `
-  -Uri "https://discovery.minecrafteduservices.com/host" `
-  -Headers @{"Authorization"="Bearer $token"; "api-version"="2.0"} `
-  -ContentType "application/json" `
-  -Body '{"build":12232001,"locale":"en_US","maxPlayers":40,"networkId":"1234567890","playerCount":0,"protocolVersion":1,"serverDetails":"GeyserProxy","serverName":"My Server","transportType":2}'
-$response.serverToken
-```
-
-Copy the output - this is your server token for the `server-tokens` list in the Geyser config. Bearer tokens expire after ~75-90 minutes, so don't wait too long between capturing and exchanging.
 
 ### Supported Platforms
 
