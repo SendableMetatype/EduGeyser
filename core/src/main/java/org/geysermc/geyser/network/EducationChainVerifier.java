@@ -48,6 +48,17 @@ import java.util.List;
 public final class EducationChainVerifier {
 
     /**
+     * Pads a Base64URL string to the correct length for decoding.
+     */
+    static String padBase64(String base64) {
+        int padding = 4 - (base64.length() % 4);
+        if (padding != 4) {
+            base64 += "=".repeat(padding);
+        }
+        return base64;
+    }
+
+    /**
      * Known MESS public keys used to sign EduTokenChain JWTs.
      * These are EC P-384 keys. Microsoft rotates these periodically.
      * We try each key until one verifies, to handle key rotation gracefully.
@@ -80,12 +91,12 @@ public final class EducationChainVerifier {
                 return false;
             }
 
-            String headerJson = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
+            String headerJson = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
             JsonObject header = JsonParser.parseString(headerJson).getAsJsonObject();
             String x5u = header.has("x5u") ? header.get("x5u").getAsString() : null;
 
             byte[] signedData = (parts[0] + "." + parts[1]).getBytes(StandardCharsets.UTF_8);
-            byte[] signatureBytes = Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[2]));
+            byte[] signatureBytes = Base64.getUrlDecoder().decode(padBase64(parts[2]));
             byte[] derSignature = rawToDer(signatureBytes);
 
             // Try each known MESS public key until one verifies
@@ -143,8 +154,8 @@ public final class EducationChainVerifier {
                     logger.debug("[EduChainDump] --- Chain JWT #%s (parts: %s) ---", i, parts.length);
 
                     if (parts.length >= 2) {
-                        String header = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
-                        String payload = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
+                        String header = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+                        String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
                         logger.debug("[EduChainDump]   Header:  %s", header);
                         logger.debug("[EduChainDump]   Payload: %s", payload);
                     } else {
@@ -156,8 +167,8 @@ public final class EducationChainVerifier {
                 logger.debug("[EduChainDump] Auth payload is TokenPayload (single token).");
                 String[] parts = token.split("\\.");
                 if (parts.length >= 2) {
-                    String header = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
-                    String payload = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
+                    String header = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+                    String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
                     logger.debug("[EduChainDump]   Header:  %s", header);
                     logger.debug("[EduChainDump]   Payload: %s", payload);
                 }
@@ -170,8 +181,8 @@ public final class EducationChainVerifier {
                 String[] parts = clientDataJwt.split("\\.");
                 logger.debug("[EduChainDump] --- Client Data JWT (parts: %s) ---", parts.length);
                 if (parts.length >= 2) {
-                    String header = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[0])));
-                    String payload = new String(Base64.getUrlDecoder().decode(EducationAuthManager.padBase64(parts[1])));
+                    String header = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
+                    String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])));
                     logger.debug("[EduChainDump]   Header:  %s", header);
                     // Client data payloads can exceed 10KB (skin data); truncate to keep logs readable
                     if (payload.length() > 2000) {

@@ -87,8 +87,8 @@ public class BlockBreakHandler {
     /**
      * Minimum break progress at which an Education Edition STOP_BREAK is treated as
      * a completed block break. Edu clients send STOP_BREAK instead of BLOCK_PREDICT_DESTROY
-     * when a block finishes breaking. This threshold is a heuristic but is effectively dead
-     * code since server-authoritative block breaking handles edu clients correctly.
+     * when a block finishes breaking. This threshold is a heuristic, currently unused
+     * since server-authoritative block breaking handles edu clients correctly.
      */
     private static final float EDU_STOP_BREAK_THRESHOLD = 0.65F;
 

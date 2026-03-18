@@ -1313,7 +1313,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
 
             boolean gameShouldUpdate = !tickingFrozen || stepTicks > 0;
             if (stepTicks > 0) {
-               --stepTicks;
+                --stepTicks;
             }
 
             Entity vehicle = playerEntity.getVehicle();
