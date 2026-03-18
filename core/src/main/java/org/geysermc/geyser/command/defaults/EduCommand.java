@@ -109,7 +109,10 @@ public class EduCommand extends GeyserCommand {
             }
         }
         source.sendMessage(ChatColor.YELLOW + "Education players: " + ChatColor.WHITE + eduCount + "/" + totalCount + " online");
-        source.sendMessage(ChatColor.YELLOW + "Auth mode: " + ChatColor.WHITE + geyser.config().education().authMode());
+        source.sendMessage(ChatColor.YELLOW + "Tenancy mode: " + ChatColor.WHITE + geyser.config().education().tenancyMode());
+        source.sendMessage(ChatColor.YELLOW + "Verified joins: " + ChatColor.WHITE + eduAuth.getVerifiedJoins()
+                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Unverified: " + ChatColor.WHITE + eduAuth.getUnverifiedJoins()
+                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Rejected: " + ChatColor.WHITE + eduAuth.getRejectedJoins());
     }
 
     private void executePlayers(CommandContext<GeyserCommandSource> context) {
