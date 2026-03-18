@@ -25,27 +25,22 @@
 
 package org.geysermc.geyser.network;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import org.cloudburstmc.protocol.bedrock.data.auth.AuthPayload;
 import org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload;
 import org.cloudburstmc.protocol.bedrock.data.auth.TokenPayload;
 import org.geysermc.geyser.GeyserLogger;
 
-import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.List;
 
 /**
- * Handles cryptographic verification of Education Edition EduTokenChain JWTs
- * against known MESS (Minecraft Education Server Services) public keys.
- * Also provides diagnostic chain dumping for development and debugging.
+ * Diagnostic utilities for Education Edition JWT chains.
+ * Provides chain dumping for development and debugging.
  */
 public final class EducationChainVerifier {
+
+    private EducationChainVerifier() {
+    }
 
     /**
      * Pads a Base64URL string to the correct length for decoding.
@@ -56,79 +51,6 @@ public final class EducationChainVerifier {
             base64 += "=".repeat(padding);
         }
         return base64;
-    }
-
-    /**
-     * Known MESS public keys used to sign EduTokenChain JWTs.
-     * These are EC P-384 keys. Microsoft rotates these periodically.
-     * We try each key until one verifies, to handle key rotation gracefully.
-     */
-    private static final String[] MESS_PUBLIC_KEYS = {
-            // Current key (as of March 2026)
-            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE0mYk5OWVJ/Fi3KVH35wJBQKxWVzhR9fHBD4+STlMPS3OcaqavMsVxuO8cPRPzpGuXdGD6AlD8YVQBOvuw+yHm+0vMSiJo8hCDAkOA767dsdmXNWYdpXHvCW1kBR2sKgQ",
-            // Previous key
-            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEWQV0SMQIW5FvnAKe2ibSoqPBDI9iaxqbiBKCIKGu2YKAhksJp+nZEQ1bUlTzUsR9yjauLswIo5Q8NdwRgybb1VbVrX1xVIZGXZP4b8IpNS908UA646GIFatYZFWKVY61",
-    };
-
-    private EducationChainVerifier() {
-    }
-
-    /**
-     * Verifies the EduTokenChain JWT signature against the known MESS public keys.
-     * The EduTokenChain is signed by Microsoft's MESS service when it authorizes
-     * a client to join a specific education server. Verifying this signature proves
-     * the client was genuinely authorized by Microsoft.
-     *
-     * @param logger the logger instance
-     * @param eduTokenChain the raw JWT string from the client data
-     * @return true if the signature is valid, false otherwise
-     */
-    public static boolean verifyEduTokenChain(GeyserLogger logger, String eduTokenChain) {
-        try {
-            String[] parts = eduTokenChain.split("\\.");
-            if (parts.length != 3) {
-                logger.warning("[EduAuth] EduTokenChain has " + parts.length + " parts, expected 3.");
-                return false;
-            }
-
-            String headerJson = new String(Base64.getUrlDecoder().decode(padBase64(parts[0])));
-            JsonObject header = JsonParser.parseString(headerJson).getAsJsonObject();
-            String x5u = header.has("x5u") ? header.get("x5u").getAsString() : null;
-
-            byte[] signedData = (parts[0] + "." + parts[1]).getBytes(StandardCharsets.UTF_8);
-            byte[] signatureBytes = Base64.getUrlDecoder().decode(padBase64(parts[2]));
-            byte[] derSignature = rawToDer(signatureBytes);
-
-            // Try each known MESS public key until one verifies
-            KeyFactory keyFactory = KeyFactory.getInstance("EC");
-            for (String messKeyBase64 : MESS_PUBLIC_KEYS) {
-                try {
-                    byte[] keyBytes = Base64.getDecoder().decode(messKeyBase64);
-                    X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
-                    PublicKey messPublicKey = keyFactory.generatePublic(keySpec);
-
-                    Signature sig = Signature.getInstance("SHA384withECDSA");
-                    sig.initVerify(messPublicKey);
-                    sig.update(signedData);
-                    if (sig.verify(derSignature)) {
-                        logger.debug("[EduAuth] EduTokenChain verified with MESS key: %s...", messKeyBase64.substring(0, 20));
-                        return true;
-                    }
-                } catch (Exception ignored) {
-                    // Key didn't match; try next
-                }
-            }
-
-            logger.warning("[EduAuth] EduTokenChain did not verify against any known MESS key.");
-            if (x5u != null) {
-                logger.warning("[EduAuth] JWT x5u key: " + x5u);
-                logger.warning("[EduAuth] If this is a legitimate edu client, the MESS key may have rotated. Update MESS_PUBLIC_KEYS in EducationChainVerifier.java.");
-            }
-            return false;
-        } catch (Exception e) {
-            logger.warning("[EduAuth] EduTokenChain verification error: " + e.getMessage());
-            return false;
-        }
     }
 
     /**
@@ -197,52 +119,5 @@ public final class EducationChainVerifier {
         } catch (Exception e) {
             logger.warning("[EduChainDump] Failed to dump education chain: " + e.getMessage());
         }
-    }
-
-    /**
-     * Converts a raw ECDSA signature (R || S concatenation) to DER format.
-     * JWT ES384 signatures are 96 bytes (two 48-byte integers), but Java's
-     * Signature class expects DER-encoded signatures.
-     */
-    private static byte[] rawToDer(byte[] raw) {
-        int halfLen = raw.length / 2;
-        byte[] r = trimLeadingZeros(raw, 0, halfLen);
-        byte[] s = trimLeadingZeros(raw, halfLen, halfLen);
-
-        boolean rPad = (r[0] & 0x80) != 0;
-        boolean sPad = (s[0] & 0x80) != 0;
-        int rLen = r.length + (rPad ? 1 : 0);
-        int sLen = s.length + (sPad ? 1 : 0);
-        int totalLen = 2 + rLen + 2 + sLen;
-
-        byte[] der = new byte[2 + totalLen];
-        int idx = 0;
-        der[idx++] = 0x30; // SEQUENCE
-        der[idx++] = (byte) totalLen;
-        der[idx++] = 0x02; // INTEGER
-        der[idx++] = (byte) rLen;
-        if (rPad) der[idx++] = 0;
-        System.arraycopy(r, 0, der, idx, r.length);
-        idx += r.length;
-        der[idx++] = 0x02; // INTEGER
-        der[idx++] = (byte) sLen;
-        if (sPad) der[idx++] = 0;
-        System.arraycopy(s, 0, der, idx, s.length);
-
-        return der;
-    }
-
-    /**
-     * Trims leading zero bytes from a big-endian integer representation.
-     */
-    private static byte[] trimLeadingZeros(byte[] buf, int offset, int length) {
-        int start = offset;
-        int end = offset + length;
-        while (start < end - 1 && buf[start] == 0) {
-            start++;
-        }
-        byte[] result = new byte[end - start];
-        System.arraycopy(buf, start, result, 0, result.length);
-        return result;
     }
 }

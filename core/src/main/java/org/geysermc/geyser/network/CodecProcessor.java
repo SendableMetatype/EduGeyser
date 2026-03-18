@@ -92,7 +92,7 @@ import org.cloudburstmc.protocol.common.util.VarInts;
  * TODO: Keep serializers up-to-date!
  */
 @SuppressWarnings("deprecation")
-public class CodecProcessor {
+class CodecProcessor {
     
     /**
      * Generic serializer that throws an exception when trying to serialize or deserialize a packet, leading to client disconnection.
@@ -254,7 +254,7 @@ public class CodecProcessor {
 
         BedrockCodec.Builder codecBuilder = codec.toBuilder()
             // Illegal unused serverbound packets for education features.
-            // These are re-enabled in educationCodec() for education sessions only.
+            // These are re-enabled in EducationCodecProcessor for education sessions only.
             .updateSerializer(PhotoTransferPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(LabTablePacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(CodeBuilderSourcePacket.class, ILLEGAL_SERIALIZER)
@@ -313,30 +313,6 @@ public class CodecProcessor {
             }
 
             return codecBuilder.build();
-    }
-
-    /**
-     * Creates an Education Edition variant of the given codec.
-     * Appends 3 extra string fields to StartGamePacket and re-enables education
-     * packet types (chemistry tables, NPCs, photos, Code Builder, GameTest) that
-     * are blocked as ILLEGAL in the base codec for standard Bedrock sessions.
-     * These packets are changed to IGNORED so they are deserialized as no-ops
-     * rather than disconnecting the client.
-     */
-    public static BedrockCodec educationCodec(BedrockCodec codec) {
-        return codec.toBuilder()
-            .updateSerializer(StartGamePacket.class, EducationStartGameSerializer.INSTANCE)
-            // Re-enable education packets that are ILLEGAL in the base codec.
-            // Education clients legitimately send these for chemistry, NPCs, photos, and Code Builder.
-            // IGNORED allows deserialization without processing (Geyser has no translators for these).
-            .updateSerializer(PhotoTransferPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(LabTablePacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(CodeBuilderSourcePacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(CreatePhotoPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(NpcRequestPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(PhotoInfoRequestPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(GameTestRequestPacket.class, IGNORED_SERIALIZER)
-            .build();
     }
 
     /**
