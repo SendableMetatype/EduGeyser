@@ -48,7 +48,7 @@ Choose your setup method based on your situation:
 | **I'm an IT admin** or have Global Admin access to my school's M365 tenant | [Method B: Dedicated Server](#method-b-dedicated-server-mode) | Global Admin account + 10 minutes |
 | **I want to test** with a personal tenant (not a school) | [Method B](#method-b-dedicated-server-mode) | Free trial tenant (10 launches) or commercial license ($3/month) |
 
-**Method A** is simpler - students connect via the included **server list resource pack** (adds a permanent Servers button to their home screen) or a one-time link. **Method B** additionally makes your server appear in Education Edition's built-in server list - students just click "Play" without installing anything.
+Both methods give students a server list. **Method A** uses the included resource pack — students enter your server's IP once and it's saved permanently. **Method B** populates the server list automatically — students just click "Play" without entering an IP.
 
 ---
 
@@ -58,7 +58,7 @@ Choose your setup method based on your situation:
 
 ### Overview
 
-In Standalone Mode, you obtain a token from Microsoft's Education services using the EduGeyser Token Tool. The token authorizes your Geyser server to accept Education connections from your school's tenant. Students connect using the included server list resource pack (recommended) or a one-time link - the server does not appear in Education Edition's built-in server list.
+In Standalone Mode, you obtain a token from Microsoft's Education services using the EduGeyser Token Tool. The token authorizes your Geyser server to accept Education connections from your school's tenant. Students connect using the included server list resource pack (recommended) or a one-time link. The resource pack server list requires students to enter your server's IP once — after that, it's saved permanently.
 
 ### Step 1: Install EduGeyser
 
@@ -233,47 +233,25 @@ You should see:
 [EduGeyser] Education Edition support is now active.
 ```
 
-### Step 5: Enable the Server in the Admin Portal
-
-The server is now registered but **not yet visible to students**. You need to enable it:
-
-1. Go to the [Dedicated Server Admin Portal](https://education.minecraft.net/teachertools/en_US/dedicatedservers/)
-2. Sign in with the same Global Admin account (or a teacher account, if "Allow teachers to manage servers" was enabled in Settings)
-3. Find your new server in the list (it will have the server ID shown in the console, e.g., `UXHG99K8JX2P`)
-4. Optionally change the display name
-5. Click the button to **enable** the server
-6. Click the button to **broadcast** it (makes it visible to all users in your tenant)
-7. Optionally set a password for the server
-
-Once enabled and broadcasted, the server appears in students' Education Edition server list.
-
-### Step 6: Students Connect
+### Step 5: Students Connect
 
 Students open Minecraft Education Edition, go to the **Servers** tab, and your server appears in the list. They click "Play" to connect.
 
-> **Tip:** Students can also connect immediately via the URI link (`minecraftedu://connect/?serverUrl=ip:port`) even before you complete the admin portal step - the portal step is only needed for server list visibility.
-
 ### After First Setup
 
-On subsequent server restarts, EduGeyser silently refreshes all tokens in the background. The device code flow and admin portal steps are only needed once (or if you run `/geyser edu reset`).
+On subsequent server restarts, EduGeyser silently refreshes all tokens in the background. The device code flow is only needed once (or if you run `/geyser edu reset`).
 
 ### Enabling Cross-Tenant Access
 
 There are two ways to allow students from **other schools** (other M365 tenants) to connect:
 
-#### Option 1: MESS Cross-Tenant (Portal-Based)
+#### Option 1: MESS Cross-Tenant (API-Based)
 
-1. Go to the [Dedicated Server Admin Portal](https://education.minecraft.net/teachertools/en_US/dedicatedservers/)
-2. Click **Settings** (top right) and enable **Cross-Tenant** if you haven't already
-3. Find your server in the list and enable **Cross-Tenant** on that specific server as well
-
-Students from other tenants can then see and join your server. Their school's admin does NOT need to enable anything on their end. Cross-tenant is one-sided.
-
-For more details, see the [Dedicated Server FAQ](https://edusupport.minecraft.net/hc/en-us/articles/41758309283348-Dedicated-Server-FAQ).
+Cross-tenant access can be configured through the MESS tooling API. Both the hosting tenant and the joining tenant need to enable cross-tenant settings. For details on the API calls required, see the [MESS Tooling Reference](MESS-Tooling-Notebook-Reference.md).
 
 #### Option 2: Hybrid Mode (Token-Based)
 
-If cross-tenant via the portal doesn't work for your situation, you can use **hybrid mode** to manually add tokens for additional schools:
+Alternatively, you can use **hybrid mode** to manually add tokens for additional schools:
 
 ```yaml
 education:
@@ -320,7 +298,7 @@ The best way for students to connect is the included **EduGeyser Server List res
 5. Students click **Add Server**, enter your server's name, IP, and port, then click **Save**
 6. The server is now permanently saved - students just click it to connect in the future
 
-This works because the underlying connection code for direct IP connections already exists in the Education client - Microsoft only removed the UI. The resource pack re-adds it.
+The resource pack adds a server list UI for direct IP connections to Education Edition's home screen.
 
 #### Alternative: Connection Link (Quick, One-Time)
 
@@ -402,7 +380,7 @@ All education settings are under the `education:` subsection in `config.yml`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `education-prefix` | `"#"` | Prefix for Education player usernames (e.g., `#StudentName7b91`). Must be different from the Bedrock prefix (`.`). |
+| `education-prefix` | `"#"` | Prefix for Education player usernames (e.g., `#Mark7b91`). Must be different from the Bedrock prefix (`.`). |
 
 ### Required Geyser Settings
 
@@ -445,13 +423,9 @@ This usually means the server is not running EduGeyser (the modified Geyser with
 
 ### Students can't find the server in their server list
 
-- The server list only works with **Dedicated Server Mode (Method B)**. Standalone Mode requires a connection link.
+- The automatic server list only works with **Dedicated Server Mode (Method B)**. Standalone Mode uses the resource pack server list, which requires entering the server IP.
 - Verify the server is registered: run `/geyser edu status` and check that it shows as active with a server ID.
-- Make sure you **enabled** and **broadcasted** the server in the [Admin Portal](https://education.minecraft.net/teachertools/en_US/dedicatedservers/) (Step 5 of Method B). Registration alone is not enough - the server must be explicitly enabled.
 - The Dedicated Server feature must be enabled in the school's M365 tenant by a Global Admin.
-- If using cross-tenant, cross-tenant must be enabled in **Settings** (top right) AND on the specific server (in the admin portal).
-
-See the [Dedicated Server FAQ](https://edusupport.minecraft.net/hc/en-us/articles/41758309283348-Dedicated-Server-FAQ) for additional help.
 
 ### "Your sign-in was successful but does not meet the criteria to access this resource"
 
@@ -465,7 +439,7 @@ The school's M365 tenant has **Conditional Access** policies that block the devi
 - The device code expires after about 15 minutes. If it times out, restart the server to get a new code.
 - Check that your tenant has an active Minecraft Education license.
 
-### Education players have weird usernames like `#NielsI7b91`
+### Education players have weird usernames like `#Mark7b91`
 
 This is the Education username format: `#` prefix + player name + 4-character tenant hash. The hash distinguishes players from different schools who might share the same name. It is derived from the school's tenant ID.
 
@@ -480,7 +454,6 @@ Even when showing "offline," students can still connect by clicking the server e
 EduGeyser supports both Education and Bedrock clients simultaneously. If Bedrock players can't connect:
 - Make sure `auth-type` is set to `floodgate`
 - Make sure EduFloodgate is installed alongside EduGeyser
-- Make sure you haven't accidentally set the RakNet ping edition to `MCEE` (this would hide the server from Bedrock clients)
 
 ---
 
@@ -519,7 +492,7 @@ The software is free. If you need your own M365 Education tenant for testing (Me
 
 Yes, there are two ways:
 
-1. **Cross-tenant via MESS** (Dedicated Server Mode): Enable cross-tenant in the admin portal settings and on the server. Students from other schools can join without their admin needing to do anything.
+1. **Cross-tenant via MESS** (Dedicated Server Mode): Enable cross-tenant through the MESS tooling API. Both the hosting and joining tenants need to enable cross-tenant settings. See the [MESS Tooling Reference](MESS-Tooling-Notebook-Reference.md) for details.
 2. **Hybrid or standalone mode**: Add a server token from each school to `server-tokens` in the config. EduGeyser routes each student to the correct token based on their school's tenant ID. This works with any setup method.
 
 ---
