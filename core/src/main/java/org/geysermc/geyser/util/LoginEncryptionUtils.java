@@ -108,8 +108,8 @@ public class LoginEncryptionUtils {
             }
 
             // Handle Education Edition authentication and tenant extraction
-            if (isEducationClient) {
-                handleEducationLogin(session, geyser, data, result, authPayload, jwt);
+            if (isEducationClient && !handleEducationLogin(session, geyser, data, result, authPayload, jwt)) {
+                return;
             }
 
             IdentityData extraData = result.identityClaims().extraData;
@@ -152,7 +152,10 @@ public class LoginEncryptionUtils {
      * extracts the tenant ID from the EduTokenChain, optionally verifies the
      * chain signature, and logs connection details.
      */
-    private static void handleEducationLogin(GeyserSession session, GeyserImpl geyser,
+    /**
+     * @return true if the login should continue, false if the session was disconnected
+     */
+    private static boolean handleEducationLogin(GeyserSession session, GeyserImpl geyser,
                                              BedrockClientData data, ChainValidationResult result,
                                              AuthPayload authPayload, String jwt) {
         session.setEducationClient(true);
@@ -192,6 +195,7 @@ public class LoginEncryptionUtils {
                 // TODO: Re-enable rejection once MESS key rotation is resolved
             }
         }
+        return true;
     }
 
     private static void startEncryptionHandshake(GeyserSession session, PublicKey key) throws Exception {

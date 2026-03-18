@@ -122,14 +122,15 @@ public class EducationAuthManager {
 
     // MESS server token (obtained via server/register or server/fetch_token)
     private volatile @Nullable String serverToken;      // Inner payload token (for handshake signedToken)
-    private volatile @Nullable String serverTokenJwt;    // Full JWT string (for API Authorization: Bearer header)
+    private volatile @Nullable String serverTokenJwt;    // Full JWT string (kept for session persistence)
     private volatile long serverTokenExpires;
 
     // Multi-tenancy: maps tenant ID to server token for routing
     private final ConcurrentHashMap<String, String> tenantTokenPool = new ConcurrentHashMap<>();
 
-    private ScheduledFuture<?> updateTask;
-    private ScheduledFuture<?> tokenRefreshTask;
+    private volatile ScheduledFuture<?> updateTask;
+    private volatile ScheduledFuture<?> tokenRefreshTask;
+    private volatile boolean shutdownRequested;
 
     /**
      * Initializes the auth manager, starting the device code login flow
@@ -205,6 +206,10 @@ public class EducationAuthManager {
             logger.info(LOG_PREFIX + "Server is fully configured and broadcasted.");
             logger.info(LOG_PREFIX + "Students can now connect from the server list.");
 
+            if (shutdownRequested) {
+                logger.debug(LOG_PREFIX + "Shutdown requested during auth flow, skipping scheduled tasks.");
+                return;
+            }
             scheduleServerUpdates();
             scheduleTokenRefresh();
         } catch (Exception e) {
@@ -254,10 +259,11 @@ public class EducationAuthManager {
     }
 
     /**
-     * Returns whether the auth manager has a valid server token.
+     * Returns whether the auth manager is operational — either via MESS registration
+     * (server token present) or standalone mode (tenant token pool populated).
      */
     public boolean isActive() {
-        return serverToken != null && !serverToken.isEmpty();
+        return (serverToken != null && !serverToken.isEmpty()) || !tenantTokenPool.isEmpty();
     }
 
     /**
@@ -281,26 +287,35 @@ public class EducationAuthManager {
         return serverTokenExpires;
     }
 
-    /**
-     * Formats an epoch-second timestamp into a human-readable date string.
-     */
-    public String formatExpiryPublic(long epochSeconds) {
-        return formatExpiry(epochSeconds);
-    }
 
     /**
      * Deletes the current session and starts a fresh device code authentication flow.
+     * @return true if the reset was initiated, false if education is not configured
      */
-    public void resetAndReauthenticate() {
+    public boolean resetAndReauthenticate() {
+        if (sessionFilePath == null) {
+            // Education not configured — initialize() returned early or was never called
+            return false;
+        }
         logger.info(LOG_PREFIX + "Resetting session and starting re-authentication...");
+        if (updateTask != null) {
+            updateTask.cancel(false);
+            updateTask = null;
+        }
+        if (tokenRefreshTask != null) {
+            tokenRefreshTask.cancel(false);
+            tokenRefreshTask = null;
+        }
         deleteSession();
         geyser.getScheduledThread().execute(this::runAuthFlow);
+        return true;
     }
 
     /**
      * Cancels scheduled tasks, dehosts the server, and cleans up resources.
      */
     public void shutdown() {
+        shutdownRequested = true;
         if (logger == null) {
             return;
         }
@@ -381,8 +396,11 @@ public class EducationAuthManager {
 
         long deadline = System.currentTimeMillis() + (expiresIn * 1000L);
         int pollCount = 0;
-        while (System.currentTimeMillis() < deadline) {
+        while (System.currentTimeMillis() < deadline && !shutdownRequested) {
             Thread.sleep(interval * 1000L);
+            if (shutdownRequested) {
+                throw new IOException("Device code flow interrupted by shutdown");
+            }
             pollCount++;
 
             try {
@@ -395,6 +413,13 @@ public class EducationAuthManager {
                 String message = e.getMessage();
                 if (message != null && message.contains("authorization_pending")) {
                     continue;
+                }
+                if (message != null && message.contains("slow_down")) {
+                    interval += 5;
+                    continue;
+                }
+                if (message != null && message.contains("expired_token")) {
+                    throw new IOException("Device code expired before user completed sign-in");
                 }
                 logger.debug(LOG_PREFIX + "Unexpected error during polling: %s", message);
                 throw e;
@@ -909,7 +934,7 @@ public class EducationAuthManager {
         return value.isEmpty() ? null : value;
     }
 
-    private String formatExpiry(long epochSeconds) {
+    public String formatExpiry(long epochSeconds) {
         if (epochSeconds <= 0) return "never/unset";
         return Instant.ofEpochSecond(epochSeconds)
                 .atZone(ZoneId.systemDefault())
@@ -1021,7 +1046,7 @@ public class EducationAuthManager {
                 }
                 return null;
             }
-            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(padBase64(parts[1])));
+            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(EducationChainVerifier.padBase64(parts[1])));
             JsonObject payload = JsonParser.parseString(payloadJson).getAsJsonObject();
 
             if (!payload.has("chain")) {
@@ -1087,14 +1112,4 @@ public class EducationAuthManager {
         return tenantTokenPool.size();
     }
 
-    /**
-     * Pads a Base64URL string to the correct length for decoding.
-     */
-    static String padBase64(String base64) {
-        int padding = 4 - (base64.length() % 4);
-        if (padding != 4) {
-            base64 += "=".repeat(padding);
-        }
-        return base64;
-    }
 }
