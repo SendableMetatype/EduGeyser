@@ -121,7 +121,9 @@ public final class SessionManager {
      */
     public boolean isEducationPlayerAlreadyConnected(String tenantId, String username) {
         if (tenantId == null || username == null) {
-            return false;
+            // A legitimate edu client always has a tenant ID from EduTokenChain.
+            // Treat missing tenant/username as duplicate to prevent bypass.
+            return true;
         }
         for (GeyserSession session : pendingSessions) {
             if (session.isEducationClient()

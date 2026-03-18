@@ -509,7 +509,6 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             }
         }
 
-        // Initialize Education Edition auth manager
         // Initialize Education Edition auth manager and token pool
         this.educationAuthManager = new EducationAuthManager();
         String tenancyMode = config.education().tenancyMode();

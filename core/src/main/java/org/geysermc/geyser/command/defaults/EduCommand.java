@@ -80,7 +80,7 @@ public class EduCommand extends GeyserCommand {
 
         if (eduAuth == null || !eduAuth.isActive()) {
             source.sendMessage(ChatColor.YELLOW + "Education system: " + ChatColor.RED + "INACTIVE");
-            source.sendMessage(ChatColor.GRAY + "Configure edu-server-id or edu-server-name in config.yml to enable.");
+            source.sendMessage(ChatColor.GRAY + "Configure server-name in the education section of config.yml to enable.");
             return;
         }
 
@@ -90,7 +90,7 @@ public class EduCommand extends GeyserCommand {
 
         long expires = eduAuth.getServerTokenExpires();
         long now = Instant.now().getEpochSecond();
-        String expiryStr = eduAuth.formatExpiryPublic(expires);
+        String expiryStr = eduAuth.formatExpiry(expires);
         if (expires > now) {
             long remaining = expires - now;
             source.sendMessage(ChatColor.YELLOW + "Token expires: " + ChatColor.WHITE + expiryStr
@@ -151,9 +151,12 @@ public class EduCommand extends GeyserCommand {
             return;
         }
 
+        if (!eduAuth.resetAndReauthenticate()) {
+            source.sendMessage(ChatColor.RED + "Education is not configured. Set server-name in the education config section.");
+            return;
+        }
         source.sendMessage(ChatColor.YELLOW + "Resetting education session and re-authenticating...");
         source.sendMessage(ChatColor.GRAY + "This will delete the current session and start a new device code flow.");
         source.sendMessage(ChatColor.GRAY + "Check the console for the authentication code.");
-        eduAuth.resetAndReauthenticate();
     }
 }

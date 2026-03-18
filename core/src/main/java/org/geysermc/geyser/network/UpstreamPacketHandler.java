@@ -279,6 +279,7 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
                 if (geyser.config().java().authType() != AuthType.ONLINE) {
                     session.authenticate(session.getAuthData().name());
                 } else if (!couldLoginUserByName(session.getAuthData().name())) {
+                    // We must spawn the white world
                     session.connect();
                 }
                 geyser.getLogger().info(GeyserLocale.getLocaleStringLog("geyser.network.connect", session.getAuthData().name() +
