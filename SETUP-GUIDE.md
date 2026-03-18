@@ -205,8 +205,9 @@ Start the server. EduGeyser will display a message like:
 2. Enter the code shown in the console
 3. Sign in with your **Global Admin** M365 Education account
 4. Accept the permissions prompt
+5. A second device code will appear — repeat the process. This is normal; EduGeyser authenticates twice (once for tooling access, once for the education client)
 
-Once authenticated, EduGeyser will:
+Once both sign-ins are complete, EduGeyser will:
 - Register the server with Microsoft's Education services
 - Obtain a server token automatically
 - Register your server's IP so it appears in the Education server list
