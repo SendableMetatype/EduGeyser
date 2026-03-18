@@ -156,7 +156,7 @@ import org.geysermc.geyser.item.type.BlockItem;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.JavaDimension;
 import org.geysermc.geyser.level.physics.CollisionManager;
-import org.geysermc.geyser.network.CodecProcessor;
+import org.geysermc.geyser.network.EducationCodecProcessor;
 import org.geysermc.geyser.network.netty.LocalSession;
 import org.geysermc.geyser.registry.Registries;
 import org.geysermc.geyser.registry.type.BlockMappings;
@@ -421,7 +421,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     private int clientRenderDistance = -1;
     private int serverRenderDistance = -1;
 
-
     // Exposed for GeyserConnect usage
     protected boolean sentSpawnPacket;
 
@@ -661,6 +660,13 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
      */
     @Getter @Setter
     private @Nullable String educationTenantId = null;
+
+    /**
+     * Whether this education client was verified via MESS nonce verification.
+     * False for standalone mode or hybrid config-trust connections.
+     */
+    @Getter @Setter
+    private boolean nonceVerified = false;
 
     /**
      * The op permission level set by the server
@@ -1922,7 +1928,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         // all other packets use identical serializers. Encoding is deferred to Netty's
         // event loop, so we can't swap temporarily; it must stay active.
         if (educationClient) {
-            upstream.getSession().setCodec(CodecProcessor.educationCodec(upstream.getSession().getCodec()));
+            upstream.getSession().setCodec(EducationCodecProcessor.educationCodec(upstream.getSession().getCodec()));
             // setCodec() creates a new codec helper, wiping registries. Re-set them.
             upstream.getCodecHelper().setItemDefinitions(this.itemMappings);
             upstream.getCodecHelper().setBlockDefinitions(this.blockMappings);

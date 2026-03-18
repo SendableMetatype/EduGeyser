@@ -149,10 +149,9 @@ public class LoginEncryptionUtils {
 
     /**
      * Handles Education Edition-specific login logic: sets the education flag,
-     * extracts the tenant ID from the EduTokenChain, optionally verifies the
-     * chain signature, and logs connection details.
-     */
-    /**
+     * extracts the tenant ID from the EduTokenChain, and verifies the client
+     * via MESS nonce verification (official/hybrid) or config trust (standalone).
+     *
      * @return true if the login should continue, false if the session was disconnected
      */
     private static boolean handleEducationLogin(GeyserSession session, GeyserImpl geyser,
@@ -181,20 +180,82 @@ public class LoginEncryptionUtils {
         geyser.getLogger().debug("[EduAuth] Education client: tenant=%s, role=%s",
                 tenantId != null ? tenantId : "unknown", roleName);
 
-        // Optionally verify the EduTokenChain signature against MESS public keys
-        boolean eduVerified = "verified".equalsIgnoreCase(geyser.config().education().authMode());
-        boolean eduSystemActive = eduAuthMgr != null && eduAuthMgr.isActive();
+        // Verify the client based on tenancy mode
+        String tenancyMode = geyser.config().education().tenancyMode();
+        String joinerNonce = data.getEduJoinerToHostNonce();
+        boolean hasNonce = joinerNonce != null && !joinerNonce.isEmpty();
 
-        if (eduVerified && eduSystemActive) {
-            String eduTokenChain = data.getEduTokenChain();
-            if (eduTokenChain == null || eduTokenChain.isEmpty()) {
-                geyser.getLogger().warning("[EduAuth] Education client has no EduTokenChain (edu-auth-mode=verified).");
-                // TODO: Re-enable rejection once MESS key rotation is resolved
-            } else if (!EducationChainVerifier.verifyEduTokenChain(geyser.getLogger(), eduTokenChain)) {
-                geyser.getLogger().warning("[EduAuth] EduTokenChain signature verification failed, allowing connection anyway (MESS key rotation unresolved).");
-                // TODO: Re-enable rejection once MESS key rotation is resolved
-            }
+        if ("standalone".equalsIgnoreCase(tenancyMode)) {
+            // Standalone: no MESS registration, no nonce verification possible
+            eduAuthMgr.recordUnverifiedJoin();
+            return true;
         }
+
+        if ("official".equalsIgnoreCase(tenancyMode)) {
+            // Official: nonce is required
+            if (!hasNonce) {
+                geyser.getLogger().warning("[EduAuth] Rejected: no nonce (official mode requires server list connection)");
+                eduAuthMgr.recordRejectedJoin();
+                session.disconnect(
+                    "Education Edition Connection Failed\n\n" +
+                    "This server requires connection via the Minecraft Education server list.\n" +
+                    "Direct IP/URI connections are not allowed in official mode.\n\n" +
+                    "Please connect through the in-game server list instead."
+                );
+                return false;
+            }
+            if (!eduAuthMgr.verifyNonce(joinerNonce)) {
+                geyser.getLogger().warning("[EduAuth] Rejected: nonce not found in MESS joiner queue");
+                eduAuthMgr.recordRejectedJoin();
+                session.disconnect(
+                    "Education Edition Connection Failed\n\n" +
+                    "Your connection could not be verified with Microsoft.\n" +
+                    "This may happen if the server just restarted.\n\n" +
+                    "Please try again in a few seconds."
+                );
+                return false;
+            }
+            session.setNonceVerified(true);
+            eduAuthMgr.recordVerifiedJoin();
+            geyser.getLogger().debug("[EduAuth] Nonce verified for tenant %s", tenantId);
+            return true;
+        }
+
+        // Hybrid: config-trust tenants are allowed without nonce verification.
+        // All other tenants must be verified via nonce (owning tenant via server list).
+        if (tenantId != null && eduAuthMgr.isConfigTrustTenant(tenantId)) {
+            // Tenant is explicitly listed in server-tokens — allow via config trust
+            eduAuthMgr.recordUnverifiedJoin();
+            geyser.getLogger().debug("[EduAuth] Config-trust allow for tenant %s (hybrid mode)", tenantId);
+            return true;
+        }
+
+        // Not a config-trust tenant — require nonce verification
+        if (!hasNonce) {
+            geyser.getLogger().warning("[EduAuth] Rejected: tenant " +
+                    (tenantId != null ? tenantId : "unknown") + " not in server-tokens and no nonce present");
+            eduAuthMgr.recordRejectedJoin();
+            session.disconnect(
+                "Education Edition Connection Failed\n\n" +
+                "Your school (tenant: " + (tenantId != null ? tenantId : "unknown") + ") is not configured on this server.\n" +
+                "Connect via the Minecraft Education server list, or ask the\n" +
+                "server administrator to add your school's tenant token."
+            );
+            return false;
+        }
+        if (!eduAuthMgr.verifyNonce(joinerNonce)) {
+            geyser.getLogger().warning("[EduAuth] Rejected: nonce not found in MESS joiner queue");
+            eduAuthMgr.recordRejectedJoin();
+            session.disconnect(
+                "Education Edition Connection Failed\n\n" +
+                "Your connection could not be verified with Microsoft.\n\n" +
+                "Please try again in a few seconds."
+            );
+            return false;
+        }
+        session.setNonceVerified(true);
+        eduAuthMgr.recordVerifiedJoin();
+        geyser.getLogger().debug("[EduAuth] Nonce verified for tenant %s (hybrid mode)", tenantId);
         return true;
     }
 

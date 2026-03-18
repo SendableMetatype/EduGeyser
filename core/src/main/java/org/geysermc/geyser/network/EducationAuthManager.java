@@ -25,6 +25,8 @@
 
 package org.geysermc.geyser.network;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -34,6 +36,7 @@ import org.geysermc.geyser.session.GeyserSession;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -56,9 +59,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Fully-automated Education Edition authentication manager using Microsoft's admin tooling API.
@@ -122,15 +127,27 @@ public class EducationAuthManager {
 
     // MESS server token (obtained via server/register or server/fetch_token)
     private volatile @Nullable String serverToken;      // Inner payload token (for handshake signedToken)
-    private volatile @Nullable String serverTokenJwt;    // Full JWT string (kept for session persistence)
+    private volatile @Nullable String serverTokenJwt;    // Full JWT string (kept for session persistence and token refresh)
     private volatile long serverTokenExpires;
 
     // Multi-tenancy: maps tenant ID to server token for routing
     private final ConcurrentHashMap<String, String> tenantTokenPool = new ConcurrentHashMap<>();
+    // Tenant IDs that came from config (server-tokens), as opposed to MESS registration
+    private final ConcurrentHashMap.KeySetView<String, Boolean> configTrustTenants = ConcurrentHashMap.newKeySet();
 
     private volatile ScheduledFuture<?> updateTask;
     private volatile ScheduledFuture<?> tokenRefreshTask;
     private volatile boolean shutdownRequested;
+
+    // Nonce verification cache: joinerToHostNonce → NonceEntry
+    private static final long NONCE_EXPIRY_MS = 30 * 60 * 1000L; // 30 minutes
+    private static final int NONCE_FETCH_TIMEOUT = 3000; // 3 seconds
+    private final ConcurrentHashMap<String, NonceEntry> nonceCache = new ConcurrentHashMap<>();
+    private final AtomicLong verifiedJoins = new AtomicLong();
+    private final AtomicLong unverifiedJoins = new AtomicLong();
+    private final AtomicLong rejectedJoins = new AtomicLong();
+
+    record NonceEntry(String sessionToken, long fetchedAt) {}
 
     /**
      * Initializes the auth manager, starting the device code login flow
@@ -190,6 +207,24 @@ public class EducationAuthManager {
         try {
             loadSession();
             restoreOrAuthenticate();
+        } catch (Exception e) {
+            logger.error(LOG_PREFIX + "Authentication flow failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Completes the auth flow after tokens are available (either restored or
+     * obtained via device code). Handles server registration, hosting, and
+     * scheduling of periodic tasks.
+     */
+    private void completeAuthFlow() {
+        try {
+            if (serverId != null && !serverId.isEmpty()) {
+                fetchServerToken();
+            } else {
+                registerNewServer();
+                logger.info(LOG_PREFIX + "Server registered with ID: " + serverId);
+            }
 
             // Auto-enable tenant settings (dedicated servers, teacher access, cross-tenant)
             // This is best-effort: may fail if user is not a tenant admin
@@ -229,7 +264,7 @@ public class EducationAuthManager {
             } else {
                 ensureValidAccessToken(true);
                 ensureValidEduAccessToken(true);
-                fetchServerToken();
+                completeAuthFlow();
                 return;
             }
         } else if (hasToolingSession || hasEduSession) {
@@ -238,15 +273,11 @@ public class EducationAuthManager {
             deleteSession();
         }
 
-        // No session found, need to authenticate with both app IDs
-        doDeviceCodeFlows();
-
-        if (serverId != null && !serverId.isEmpty()) {
-            fetchServerToken();
-        } else {
-            registerNewServer();
-            logger.info(LOG_PREFIX + "Server registered with ID: " + serverId);
-        }
+        // No session found, need to authenticate with both app IDs via async device code flows
+        doDeviceCodeFlows().thenRun(this::completeAuthFlow).exceptionally(ex -> {
+            logger.error(LOG_PREFIX + "Authentication flow failed: " + ex.getMessage());
+            return null;
+        });
     }
 
     // ---- Public API ----
@@ -340,92 +371,131 @@ public class EducationAuthManager {
     // ---- Device Code Flow (OAuth v2.0 with scope parameter) ----
 
     /**
-     * Runs both device code flows: first for the tooling app ID (tooling/* endpoints),
-     * then for the edu client app ID (server/* endpoints). The user must approve both.
+     * Runs both device code flows asynchronously: first for the tooling app ID
+     * (tooling/* endpoints), then for the edu client app ID (server/* endpoints).
+     * Returns a future that completes when both flows finish.
      */
-    private void doDeviceCodeFlows() throws IOException, InterruptedException {
+    private CompletableFuture<Void> doDeviceCodeFlows() {
         logger.info(LOG_PREFIX + "Two sign-ins are required: one for server management, one for server registration.");
 
         // Flow 1: Tooling app ID (for tooling/* endpoints)
         logger.info(LOG_PREFIX + "Step 1/2: Sign in for server management (tooling)...");
-        JsonObject toolingTokens = doDeviceCodeFlow(TOOLING_CLIENT_ID, "tooling");
-        this.accessToken = toolingTokens.get("access_token").getAsString();
-        this.refreshToken = toolingTokens.has("refresh_token")
-                ? toolingTokens.get("refresh_token").getAsString() : null;
-        this.accessTokenExpires = parseTokenExpiry(toolingTokens);
+        return doDeviceCodeFlow(TOOLING_CLIENT_ID, "tooling").thenCompose(toolingTokens -> {
+            this.accessToken = toolingTokens.get("access_token").getAsString();
+            this.refreshToken = toolingTokens.has("refresh_token")
+                    ? toolingTokens.get("refresh_token").getAsString() : null;
+            this.accessTokenExpires = parseTokenExpiry(toolingTokens);
 
-        // Flow 2: Edu client app ID (for server/register, server/fetch_token)
-        logger.info(LOG_PREFIX + "Step 2/2: Sign in for server registration...");
-        JsonObject eduTokens = doDeviceCodeFlow(EDU_CLIENT_ID, "server");
-        this.eduAccessToken = eduTokens.get("access_token").getAsString();
-        this.eduRefreshToken = eduTokens.has("refresh_token")
-                ? eduTokens.get("refresh_token").getAsString() : null;
-        this.eduAccessTokenExpires = parseTokenExpiry(eduTokens);
+            // Flow 2: Edu client app ID (for server/register, server/fetch_token)
+            logger.info(LOG_PREFIX + "Step 2/2: Sign in for server registration...");
+            return doDeviceCodeFlow(EDU_CLIENT_ID, "server");
+        }).thenAccept(eduTokens -> {
+            this.eduAccessToken = eduTokens.get("access_token").getAsString();
+            this.eduRefreshToken = eduTokens.has("refresh_token")
+                    ? eduTokens.get("refresh_token").getAsString() : null;
+            this.eduAccessTokenExpires = parseTokenExpiry(eduTokens);
 
-        logger.info(LOG_PREFIX + "Both authentications successful!");
+            logger.info(LOG_PREFIX + "Both authentications successful!");
+        });
     }
 
     /**
      * Runs a single device code flow for the given client ID.
-     * Returns the raw token response JSON (caller extracts access_token, refresh_token, etc.).
+     * Returns a future that completes with the raw token response JSON.
+     * Uses self-rescheduling single-shot tasks instead of Thread.sleep
+     * to avoid blocking the executor during the polling window.
      */
-    private JsonObject doDeviceCodeFlow(String clientId, String label) throws IOException, InterruptedException {
-        String body = "client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
-                + "&scope=" + URLEncoder.encode(SCOPE, StandardCharsets.UTF_8);
-        JsonObject deviceCodeResponse = postForm(ENTRA_BASE + "/devicecode", body);
+    private CompletableFuture<JsonObject> doDeviceCodeFlow(String clientId, String label) {
+        CompletableFuture<JsonObject> future = new CompletableFuture<>();
 
-        String deviceCode = deviceCodeResponse.get("device_code").getAsString();
-        String userCode = deviceCodeResponse.get("user_code").getAsString();
-        String verificationUri = deviceCodeResponse.has("verification_uri")
-                ? deviceCodeResponse.get("verification_uri").getAsString()
-                : deviceCodeResponse.get("verification_url").getAsString();
-        int expiresIn = deviceCodeResponse.get("expires_in").getAsInt();
-        int interval = deviceCodeResponse.get("interval").getAsInt();
+        try {
+            String body = "client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+                    + "&scope=" + URLEncoder.encode(SCOPE, StandardCharsets.UTF_8);
+            JsonObject deviceCodeResponse = postForm(ENTRA_BASE + "/devicecode", body);
 
-        logger.info(LOG_PREFIX + "============================================");
-        logger.info(LOG_PREFIX + "  Go to: " + verificationUri);
-        logger.info(LOG_PREFIX + "  Enter code: " + userCode);
-        logger.info(LOG_PREFIX + "  (" + label + " authentication)");
-        logger.info(LOG_PREFIX + "============================================");
-        logger.info(LOG_PREFIX + "Waiting for sign-in...");
+            String deviceCode = deviceCodeResponse.get("device_code").getAsString();
+            String userCode = deviceCodeResponse.get("user_code").getAsString();
+            String verificationUri = deviceCodeResponse.has("verification_uri")
+                    ? deviceCodeResponse.get("verification_uri").getAsString()
+                    : deviceCodeResponse.get("verification_url").getAsString();
+            int expiresIn = deviceCodeResponse.get("expires_in").getAsInt();
+            int initialInterval = deviceCodeResponse.get("interval").getAsInt();
 
-        // Poll for token using v2.0 token endpoint
-        String pollBody = "grant_type=" + URLEncoder.encode("urn:ietf:params:oauth:grant-type:device_code", StandardCharsets.UTF_8)
-                + "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
-                + "&device_code=" + URLEncoder.encode(deviceCode, StandardCharsets.UTF_8);
+            logger.info(LOG_PREFIX + "============================================");
+            logger.info(LOG_PREFIX + "  Go to: " + verificationUri);
+            logger.info(LOG_PREFIX + "  Enter code: " + userCode);
+            logger.info(LOG_PREFIX + "  (" + label + " authentication)");
+            logger.info(LOG_PREFIX + "============================================");
+            logger.info(LOG_PREFIX + "Waiting for sign-in...");
 
-        long deadline = System.currentTimeMillis() + (expiresIn * 1000L);
-        int pollCount = 0;
-        while (System.currentTimeMillis() < deadline && !shutdownRequested) {
-            Thread.sleep(interval * 1000L);
-            if (shutdownRequested) {
-                throw new IOException("Device code flow interrupted by shutdown");
+            String pollBody = "grant_type=" + URLEncoder.encode("urn:ietf:params:oauth:grant-type:device_code", StandardCharsets.UTF_8)
+                    + "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+                    + "&device_code=" + URLEncoder.encode(deviceCode, StandardCharsets.UTF_8);
+
+            long deadline = System.currentTimeMillis() + (expiresIn * 1000L);
+            AtomicInteger interval = new AtomicInteger(initialInterval);
+
+            ScheduledExecutorService executor = geyser.getScheduledThread();
+            schedulePollTick(executor, future, pollBody, label, deadline, expiresIn, interval);
+
+        } catch (IOException e) {
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    /**
+     * Schedules a single poll tick, then reschedules itself on success/retry.
+     * This avoids blocking the executor thread between polls.
+     */
+    private void schedulePollTick(ScheduledExecutorService executor, CompletableFuture<JsonObject> future,
+                                  String pollBody, String label, long deadline, int expiresIn,
+                                  AtomicInteger interval) {
+        executor.schedule(() -> {
+            if (future.isDone()) {
+                return;
             }
-            pollCount++;
+            if (shutdownRequested) {
+                future.completeExceptionally(new IOException("Device code flow interrupted by shutdown"));
+                return;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                future.completeExceptionally(new IOException(
+                        "Device code flow timed out after " + expiresIn + " seconds"));
+                return;
+            }
 
             try {
                 JsonObject tokenResponse = postForm(ENTRA_BASE + "/token", pollBody);
                 if (tokenResponse.has("access_token")) {
                     logger.info(LOG_PREFIX + "Authentication successful (" + label + ")!");
-                    return tokenResponse;
+                    future.complete(tokenResponse);
+                    return;
                 }
             } catch (IOException e) {
                 String message = e.getMessage();
                 if (message != null && message.contains("authorization_pending")) {
-                    continue;
+                    // Expected — schedule next tick
+                    schedulePollTick(executor, future, pollBody, label, deadline, expiresIn, interval);
+                    return;
                 }
                 if (message != null && message.contains("slow_down")) {
-                    interval += 5;
-                    continue;
+                    interval.addAndGet(5);
+                    schedulePollTick(executor, future, pollBody, label, deadline, expiresIn, interval);
+                    return;
                 }
                 if (message != null && message.contains("expired_token")) {
-                    throw new IOException("Device code expired before user completed sign-in");
+                    future.completeExceptionally(new IOException("Device code expired before user completed sign-in"));
+                    return;
                 }
                 logger.debug(LOG_PREFIX + "Unexpected error during polling: %s", message);
-                throw e;
+                future.completeExceptionally(e);
+                return;
             }
-        }
-        throw new IOException("Device code flow timed out after " + expiresIn + " seconds (" + pollCount + " polls)");
+
+            // No access_token yet but no error either — schedule next tick
+            schedulePollTick(executor, future, pollBody, label, deadline, expiresIn, interval);
+        }, interval.get(), TimeUnit.SECONDS);
     }
 
     /**
@@ -934,6 +1004,104 @@ public class EducationAuthManager {
         return value.isEmpty() ? null : value;
     }
 
+    // ---- Nonce Verification ----
+
+    /**
+     * Verifies an education client's nonce against the MESS joiner queue.
+     * On-demand: checks the local cache first, then fetches from MESS if needed.
+     *
+     * @param joinerNonce the client's EduJoinerToHostNonce from BedrockClientData
+     * @return true if the nonce was found and verified
+     */
+    public boolean verifyNonce(String joinerNonce) {
+        if (joinerNonce == null || joinerNonce.isEmpty()) {
+            return false;
+        }
+
+        // Clean expired entries
+        long now = System.currentTimeMillis();
+        nonceCache.entrySet().removeIf(e -> now - e.getValue().fetchedAt() > NONCE_EXPIRY_MS);
+
+        // Check cache first
+        if (nonceCache.containsKey(joinerNonce)) {
+            return true;
+        }
+
+        // Fetch from MESS and check again
+        fetchJoinerInfo();
+        return nonceCache.containsKey(joinerNonce);
+    }
+
+    /**
+     * Fetches pending joiner nonces from MESS and adds them to the cache.
+     * Uses a 3-second timeout to avoid blocking the login flow.
+     * Fetching flushes the MESS queue, so all returned nonces are cached.
+     */
+    private void fetchJoinerInfo() {
+        if (serverToken == null || serverToken.isEmpty()) {
+            return;
+        }
+        HttpURLConnection con = null;
+        try {
+            con = (HttpURLConnection) URI.create(MESS_BASE + "/server/fetch_joiner_info").toURL().openConnection();
+            con.setRequestMethod("GET");
+            con.setRequestProperty("Authorization", "Bearer " + serverToken);
+            con.setRequestProperty("x-request-id", UUID.randomUUID().toString());
+            con.setConnectTimeout(NONCE_FETCH_TIMEOUT);
+            con.setReadTimeout(NONCE_FETCH_TIMEOUT);
+
+            int code = con.getResponseCode();
+            if (code >= 400) {
+                String errorBody = readStream(con.getErrorStream());
+                logger.warning(LOG_PREFIX + "fetch_joiner_info failed: HTTP " + code + ": " + errorBody);
+                return;
+            }
+
+            String responseBody = readStream(con.getInputStream());
+            JsonElement parsed = JsonParser.parseString(responseBody);
+            JsonArray joiners;
+            if (parsed.isJsonArray()) {
+                joiners = parsed.getAsJsonArray();
+            } else if (parsed.isJsonObject() && parsed.getAsJsonObject().has("joinerSessions")) {
+                joiners = parsed.getAsJsonObject().getAsJsonArray("joinerSessions");
+            } else {
+                logger.warning(LOG_PREFIX + "Unexpected fetch_joiner_info response format: " + responseBody);
+                return;
+            }
+            long now = System.currentTimeMillis();
+
+            for (JsonElement element : joiners) {
+                JsonObject joiner = element.getAsJsonObject();
+                String nonce = joiner.has("joinerToHostNonce") ? joiner.get("joinerToHostNonce").getAsString() : null;
+                String sessionToken = joiner.has("sessionToken") ? joiner.get("sessionToken").getAsString() : null;
+                if (nonce != null && !nonce.isEmpty()) {
+                    nonceCache.put(nonce, new NonceEntry(sessionToken, now));
+                }
+            }
+
+            if (!joiners.isEmpty()) {
+                logger.debug(LOG_PREFIX + "Fetched %s joiner nonce(s) from MESS", joiners.size());
+            }
+        } catch (Exception e) {
+            logger.warning(LOG_PREFIX + "fetch_joiner_info error: " + e.getMessage());
+        } finally {
+            if (con != null) con.disconnect();
+        }
+    }
+
+    /** Increment the verified join counter. */
+    public void recordVerifiedJoin() { verifiedJoins.incrementAndGet(); }
+
+    /** Increment the unverified (config-trust) join counter. */
+    public void recordUnverifiedJoin() { unverifiedJoins.incrementAndGet(); }
+
+    /** Increment the rejected join counter. */
+    public void recordRejectedJoin() { rejectedJoins.incrementAndGet(); }
+
+    public long getVerifiedJoins() { return verifiedJoins.get(); }
+    public long getUnverifiedJoins() { return unverifiedJoins.get(); }
+    public long getRejectedJoins() { return rejectedJoins.get(); }
+
     public String formatExpiry(long epochSeconds) {
         if (epochSeconds <= 0) return "never/unset";
         return Instant.ofEpochSecond(epochSeconds)
@@ -974,6 +1142,7 @@ public class EducationAuthManager {
         String tenantId = extractTenantIdFromServerToken(token);
         if (tenantId != null) {
             tenantTokenPool.put(tenantId, token);
+            configTrustTenants.add(tenantId);
             if (logger != null) {
                 logger.debug("[EduTenancy] Registered token for tenant %s (source: %s)", tenantId, source);
             }
@@ -998,6 +1167,17 @@ public class EducationAuthManager {
         } else if ("standalone".equalsIgnoreCase(geyser.config().education().tenancyMode())) {
             geyser.getLogger().warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
         }
+    }
+
+    /**
+     * Pads a Base64URL string to the correct length for decoding.
+     */
+    private static String padBase64(String base64) {
+        int padding = 4 - (base64.length() % 4);
+        if (padding != 4) {
+            base64 += "=".repeat(padding);
+        }
+        return base64;
     }
 
     /**
@@ -1046,7 +1226,7 @@ public class EducationAuthManager {
                 }
                 return null;
             }
-            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(EducationChainVerifier.padBase64(parts[1])));
+            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(padBase64(parts[1])));
             JsonObject payload = JsonParser.parseString(payloadJson).getAsJsonObject();
 
             if (!payload.has("chain")) {
@@ -1103,6 +1283,21 @@ public class EducationAuthManager {
         }
 
         return null;
+    }
+
+    /**
+     * Checks if a tenant ID was explicitly configured in the server-tokens config list.
+     * Used for hybrid mode to distinguish config-trust tenants (allow without nonce)
+     * from the owning MESS-registered tenant (requires nonce verification).
+     *
+     * @param tenantId the tenant ID to check
+     * @return true if this tenant was loaded from config
+     */
+    public boolean isConfigTrustTenant(String tenantId) {
+        if (tenantId == null || tenantId.isEmpty()) {
+            return false;
+        }
+        return configTrustTenants.contains(tenantId);
     }
 
     /**

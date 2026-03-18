@@ -386,13 +386,6 @@ public interface GeyserConfig {
         int maxPlayers();
 
         @Comment("""
-                Authentication mode:
-                "verified" = require a valid, cryptographically signed login chain (prevents username spoofing).
-                "permissive" = allow Education Edition clients without chain verification (NOT recommended for production).""")
-        @DefaultString("verified")
-        String authMode();
-
-        @Comment("""
                 Tenancy mode:
                 "official" = Uses Microsoft's MESS registration. One registered token serves all tenants.
                              The server-tokens list is ignored.
