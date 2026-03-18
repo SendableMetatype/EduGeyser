@@ -162,19 +162,6 @@ You need **Global Administrator** access to a Microsoft 365 Education tenant.
 
 2. **Commercial license:** Purchase a commercial Minecraft Education license ($36/year or ~$3/month) at the Minecraft Education commercial purchase page. This creates a new M365 tenant where you are Global Admin with unlimited launches. You can cancel within 7 days for a prorated refund.
 
-#### Enable Dedicated Servers in Your Tenant
-
-1. Go to the [Dedicated Server Admin Portal](https://education.minecraft.net/teachertools/en_US/dedicatedservers/)
-2. Sign in with your Global Admin account
-3. Click the **Settings** button in the top right
-4. You'll find three toggles:
-   - **Enable Dedicated Servers** - required, turn this on
-   - **Allow teachers to manage servers** - recommended, lets teachers manage servers without needing Global Admin access
-   - **Enable Cross-Tenant** - optional, turn this on if you want students from other schools to be able to connect
-5. Save your settings
-
-> **Note:** These are one-time tenant-level settings. Once enabled, you can register multiple servers under the same tenant. For additional questions about the dedicated server system, see the [Dedicated Server FAQ](https://edusupport.minecraft.net/hc/en-us/articles/41758309283348-Dedicated-Server-FAQ).
-
 ### Step 2: Install EduGeyser
 
 1. Download the latest [EduGeyser](https://github.com/SendableMetatype/EduGeyser/releases) and [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate/releases) jars
