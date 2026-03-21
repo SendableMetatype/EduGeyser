@@ -521,7 +521,7 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
         if (tenancyMode != EducationTenancyMode.OFFICIAL) {
             this.educationAuthManager.loadConfigTokens(this);
         }
-        logger.debug("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount());
+        logger.info(String.format("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount()));
 
         MetricsPlatform metricsPlatform = bootstrap.createMetricsPlatform();
         if (metricsPlatform != null && metricsPlatform.enabled()) {

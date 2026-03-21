@@ -300,7 +300,7 @@ public class LoginEncryptionUtils {
                 "This server has " + poolSize + " tenant(s) registered.\n" +
                 "Ask the server administrator to add your school's tenant to the server configuration.\n\n" +
                 "If you are the admin, add a server-token for this tenant in the\n" +
-                "edu-server-tokens list in config.yml, or register the server\n" +
+                "education.server-tokens list in config.yml, or register the server\n" +
                 "in your school's Minecraft Education admin portal."
             );
             return null;

@@ -57,9 +57,9 @@ class EducationAuthManagerTest {
     }
 
     @Test
-    void extractTenantIdFromServerToken_tooFewSegments() {
-        assertNull(authManager.extractTenantIdFromServerToken("only-two|parts"));
-        assertNull(authManager.extractTenantIdFromServerToken("single"));
+    void extractTenantIdFromServerToken_fewerSegments() {
+        assertEquals("only-two", authManager.extractTenantIdFromServerToken("only-two|parts"));
+        assertEquals("single", authManager.extractTenantIdFromServerToken("single"));
     }
 
     @Test

@@ -1176,14 +1176,21 @@ public class EducationAuthManager {
     public void loadConfigTokens(GeyserImpl geyser) {
         List<String> configTokens = geyser.config().education().serverTokens();
         if (configTokens != null && !configTokens.isEmpty()) {
-            geyser.getLogger().debug("[EduTenancy] Loading %s server token(s) from config", configTokens.size());
+            geyser.getLogger().info(String.format("[EduTenancy] Loading %s server token(s) from config", configTokens.size()));
             for (String token : configTokens) {
                 if (token != null && !token.isBlank()) {
-                    registerServerTokenFromConfig(token.trim(), "config edu-server-tokens");
+                    String tenantId = extractTenantIdFromServerToken(token.trim());
+                    if (tenantId != null) {
+                        tenantTokenPool.put(tenantId, token.trim());
+                        configTrustTenants.add(tenantId);
+                        geyser.getLogger().info(String.format("[EduTenancy] Registered token for tenant %s (source: config server-tokens)", tenantId));
+                    } else {
+                        geyser.getLogger().warning("[EduTenancy] Could not extract tenant ID from config token. Token will not be usable for routing.");
+                    }
                 }
             }
         } else if (geyser.config().education().tenancyMode() == EducationTenancyMode.STANDALONE) {
-            geyser.getLogger().warning("[EduTenancy] Standalone mode but no edu-server-tokens configured. No tenants will be able to connect.");
+            geyser.getLogger().warning("[EduTenancy] Standalone mode but no server-tokens configured. No tenants will be able to connect.");
         }
     }
 
@@ -1210,14 +1217,14 @@ public class EducationAuthManager {
             return null;
         }
         String[] parts = serverToken.split("\\|");
-        if (parts.length >= 4) {
+        if (parts.length >= 1) {
             String tenantId = parts[0].trim();
             if (!tenantId.isEmpty()) {
                 return tenantId;
             }
         }
         if (logger != null) {
-            logger.warning("[EduTenancy] Unexpected server token format (" + parts.length + " pipe segments). Cannot extract tenant ID.");
+            logger.warning("[EduTenancy] Could not extract tenant ID from server token. Token is empty or malformed.");
         }
         return null;
     }
