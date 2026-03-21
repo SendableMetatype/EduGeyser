@@ -208,6 +208,9 @@ public class EducationAuthManager {
         try {
             loadSession();
             restoreOrAuthenticate();
+        } catch (InterruptedException e) {
+            // Re-authentication was initiated asynchronously — not a failure
+            logger.debug(LOG_PREFIX + e.getMessage());
         } catch (Exception e) {
             logger.error(LOG_PREFIX + "Authentication flow failed: " + e.getMessage(), e);
         }
@@ -558,7 +561,12 @@ public class EducationAuthManager {
         if (allowReauth) {
             logger.warning(LOG_PREFIX + "Tooling token refresh failed. Re-authenticating...");
             deleteSession();
-            doDeviceCodeFlows();
+            doDeviceCodeFlows().thenRun(this::completeAuthFlow).exceptionally(ex -> {
+                logger.error(LOG_PREFIX + "Re-authentication failed: " + ex.getMessage());
+                return null;
+            });
+            // Throw to prevent the caller from continuing synchronously — the async flow will handle it
+            throw new InterruptedException("Re-authentication initiated asynchronously");
         } else {
             logger.error(LOG_PREFIX + "Tooling token refresh failed. Cannot re-authenticate from a scheduled task. Use '/geyser edu reset' to manually re-authenticate.");
         }
@@ -607,7 +615,11 @@ public class EducationAuthManager {
         if (allowReauth) {
             logger.warning(LOG_PREFIX + "Edu client token refresh failed. Re-authenticating...");
             deleteSession();
-            doDeviceCodeFlows();
+            doDeviceCodeFlows().thenRun(this::completeAuthFlow).exceptionally(ex -> {
+                logger.error(LOG_PREFIX + "Re-authentication failed: " + ex.getMessage());
+                return null;
+            });
+            throw new InterruptedException("Re-authentication initiated asynchronously");
         } else {
             logger.error(LOG_PREFIX + "Edu client token refresh failed. Cannot re-authenticate from a scheduled task. Use '/geyser edu reset' to manually re-authenticate.");
         }
@@ -1217,14 +1229,14 @@ public class EducationAuthManager {
             return null;
         }
         String[] parts = serverToken.split("\\|");
-        if (parts.length >= 1) {
+        if (parts.length >= 4) {
             String tenantId = parts[0].trim();
             if (!tenantId.isEmpty()) {
                 return tenantId;
             }
         }
         if (logger != null) {
-            logger.warning("[EduTenancy] Could not extract tenant ID from server token. Token is empty or malformed.");
+            logger.warning("[EduTenancy] Unexpected server token format (" + parts.length + " pipe segments, expected 4). Cannot extract tenant ID.");
         }
         return null;
     }
