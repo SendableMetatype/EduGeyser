@@ -66,21 +66,44 @@ In Standalone Mode, you obtain a token from Microsoft's Education services that 
 2. Place them in your server's plugins folder (replacing standard Geyser and Floodgate if present)
 3. Start the server once to generate config files, then stop it
 
-### Step 2: Obtain a Server Token
+### Step 2: Configure Geyser
+
+Open your Geyser config file (`plugins/Geyser-Spigot/config.yml` on Paper/Spigot, or `plugins/Geyser-Velocity/config.yml` on Velocity) and set:
+
+```yaml
+education:
+  tenancy-mode: standalone
+```
+
+Also make sure `auth-type` is set to `floodgate`:
+```yaml
+auth-type: floodgate
+```
+
+That's it for config. Start the server — you'll obtain a token in the next step.
+
+### Step 3: Obtain a Server Token
 
 You need a server token from Microsoft that authorizes your server for your school's tenant. Any student or teacher with an M365 Education account at the school can obtain one.
 
 #### Option 1: `/geyser edu token` Command (Recommended)
 
-The easiest way to obtain a token is directly from the server console:
+With your server running:
 
-1. Make sure your server is running with EduGeyser and `tenancy-mode` set to `standalone`
-2. Run `/geyser edu token` from the server console or in-game with admin permissions
-3. A device code will appear in the console — go to the URL and enter the code
+1. Run `/geyser edu token` from the server console (or in-game with admin permissions)
+2. A device code and URL will appear in the console:
+   ```
+   [EduToken] Go to: https://microsoft.com/devicelogin
+   [EduToken] Enter code: ABCD1234
+   ```
+3. Open the URL in any web browser and enter the code
 4. Sign in with any Microsoft 365 Education account from your school — student or teacher accounts both work
-5. The token is automatically saved and activated. No config editing needed
+5. If your school uses multi-factor authentication, complete the MFA prompt as usual
+6. The token is automatically saved and activated — no config editing needed
 
 Tokens obtained this way **auto-refresh** — you don't need to manually renew them. You can run the command multiple times with accounts from different schools to add multiple tenants.
+
+> **Note:** If the sign-in fails with "does not meet the criteria to access this resource", your school's Conditional Access policies are blocking the device code flow. Use Option 2 instead.
 
 #### Option 2: EduGeyser Token Tool (Fallback)
 
@@ -93,35 +116,16 @@ If the device code flow is blocked by your school's Conditional Access policies,
 5. If your school uses multi-factor authentication, complete the MFA prompt as usual
 6. The tool will show a success screen with your account name, tenant ID, and the server token
 7. Click **Copy Token** to copy it to your clipboard, or **Save to File** to save it as a text file
+8. Open your Geyser config file and paste the token:
+   ```yaml
+   education:
+     tenancy-mode: standalone
+     server-tokens:
+       - "paste-your-full-server-token-here"
+   ```
+9. Restart the server
 
-Tokens from the Token Tool must be pasted into `server-tokens` in the config and manually renewed when they expire (~2 weeks).
-
-#### Option 3: Manual Fiddler Capture
-
-If neither of the above options work, see the [Manual Token Capture Guide](MANUAL-TOKEN-CAPTURE.md) for an alternative method using Fiddler.
-
-### Step 3: Configure Geyser
-
-Open your Geyser config file (`plugins/Geyser-Spigot/config.yml` on Paper/Spigot, or `plugins/Geyser-Velocity/config.yml` on Velocity) and set:
-
-```yaml
-education:
-  # Set tenancy mode to standalone (no MESS registration needed)
-  tenancy-mode: standalone
-
-  # Paste your server token(s) here
-  server-tokens:
-    - "paste-your-full-server-token-here"
-```
-
-The token is a long pipe-separated string that looks like:
-```
-03b5e7a1-cb09-4417-9e1a-c686b440b2c5|e2a49ff3-29ba-4cc2-...|2026-03-19T14:18:13.486Z|41863f21cdbeacbd1...
-```
-
-The first part is your school's tenant ID. EduGeyser extracts it automatically on startup and uses it to route connecting students to the correct token.
-
-If you have students from **multiple schools**, add a token from each school:
+Tokens from the Token Tool must be manually renewed when they expire (~2 weeks). If you have students from **multiple schools**, add a token from each school:
 ```yaml
 education:
   server-tokens:
@@ -129,16 +133,11 @@ education:
     - "token-from-school-B"
 ```
 
-Also make sure `auth-type` is set to `floodgate`:
-```yaml
-auth-type: floodgate
-```
+#### Option 3: Manual Fiddler Capture
 
-### Step 4: Start the Server
+If neither of the above options work, see the [Manual Token Capture Guide](MANUAL-TOKEN-CAPTURE.md) for an alternative method using Fiddler.
 
-Start your server. You should see a log message confirming Education Edition support is active.
-
-### Step 5: Get Students Connected
+### Step 4: Get Students Connected
 
 You have two options - see [How Students Connect](#how-students-connect) for full details:
 
