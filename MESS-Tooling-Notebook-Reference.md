@@ -20,8 +20,6 @@
 
 **Key finding:** The notebook uses app ID `1c91b067-6806-44a5-8d2d-3137e625f5b8`, which is different from both the Education client app ID and the browser admin portal app ID. This app ID supports the device code flow and is accepted by all `tooling/*` endpoints.
 
-**This was the missing piece.** EduGeyser's `tryEditServerInfo()` was returning 401 because it authenticated with the Education client app ID (`b36b1432-...`). The tooling endpoints require the admin tooling app ID (`1c91b067-...`).
-
 ### Scopes
 
 ```
@@ -37,8 +35,6 @@ https://login.microsoftonline.com/organizations
 ```
 
 The notebook uses `/organizations` as the MSAL authority, NOT `/common/oauth2`. The `/organizations` authority restricts authentication to work/school (Entra ID) accounts only — personal Microsoft accounts are excluded. This is more correct for Education scenarios.
-
-**Difference from EduGeyser:** EduGeyser's EducationAuthManager currently uses `https://login.microsoftonline.com/common/oauth2` as the Entra base URL. Consider switching to `/organizations` for the tooling token.
 
 ### Authentication Flow (from notebook code)
 
@@ -84,7 +80,7 @@ Access token for user 'Admin' in tenant '01234567-abcd-4567-0123-YourTenantID' e
 https://dedicatedserver.minecrafteduservices.com/
 ```
 
-Confirmed same as in existing EduGeyser documentation. The notebook prepends this to all endpoint paths.
+The notebook prepends this to all endpoint paths.
 
 ---
 
@@ -129,8 +125,6 @@ This is different from the API documentation HTML page, which uses camelCase in 
 | `ServerInvitesReceived` | `serverInvitesReceived` | N/A | `tooling/fetch_tenant_settings` response |
 | `AddBroadcastedServers` | `addBroadcastedServers` | N/A | `tooling/edit_tenant_settings` |
 | `RemoveBroadcastedServers` | `removeBroadcastedServers` | N/A | `tooling/edit_tenant_settings` |
-
-**Recommendation:** Use PascalCase as the notebook does. The notebook is the actively maintained tooling reference and is more likely to reflect the current API behavior. The API docs HTML page may be outdated (known to have other inaccuracies — e.g., health=3 is documented as valid but rejected in practice).
 
 ### Password vs Passcode
 
@@ -463,7 +457,7 @@ These are NOT in the notebook (the notebook only covers `tooling/*` endpoints). 
 
 **Server endpoints use the Education client app ID (`b36b1432-...`), NOT the tooling app ID.**
 
-**Open question:** Can the tooling app ID (`1c91b067-...`) also be used for `server/register` and `server/fetch_token`? If yes, a single device code flow with the tooling app ID could handle both tooling and server endpoints. If no, two separate authentication flows are needed.
+**Note:** The tooling app ID (`1c91b067-...`) cannot be used for `server/register` or `server/fetch_token` — these require the Education client app ID (`b36b1432-...`). Two separate device code flows are needed for full setup.
 
 ---
 
@@ -498,45 +492,13 @@ These are NOT in the notebook (the notebook only covers `tooling/*` endpoints). 
 | Password field | `password` (encrypted) | `Passcode` (plaintext) | **Notebook** — likely newer API version |
 | Disable password | `disablePasswordProtection` | `DisablePasscodeProtection` | **Notebook** |
 | `api-version` header | Not mentioned | `2.0` on `edit_server_info` | **Notebook** — may control API behavior |
-| Health range | 0-3 | Not specified | **Neither** — testing shows API rejects 3, accepts -1 to 2 |
+| Health range | 0-3 | Not specified | API rejects 3, accepts -1 to 2 |
 | `server/refresh_token` | Documented as working | Not present in notebook | **Endpoint returns 404** — use `server/fetch_token` instead |
 | Broadcasting | Via `edit_tenant_settings` with `addBroadcastedServers` | Via `edit_server_info` with `IsBroadcasted` | Both may work |
 
-### API Docs vs EduGeyser Current Implementation
-
-| Topic | API Docs / Notebook | EduGeyser Current | Action Needed |
-|-------|-------|-----------|---------------|
-| Tooling app ID | `1c91b067-...` | `b36b1432-...` (edu client) | **Change to tooling app ID** |
-| Field casing | PascalCase | camelCase | **Change to PascalCase** |
-| `api-version` header | `2.0` on `edit_server_info` | Not sent | **Add header** |
-| Passcode field name | `Passcode` / `DisablePasscodeProtection` | `password` / `disablePasswordProtection` | **Update field names** |
-| MSAL authority | `/organizations` | `/common/oauth2` | **Consider switching** for tooling token |
-
 ---
 
-## 10. Full Automation Path (Enabled by Notebook Findings)
-
-With the correct app ID and field names, the complete one-login setup becomes:
-
-```
-1. Admin starts EduGeyser
-2. Device code prompt appears (using tooling app ID 1c91b067-...)
-3. Admin logs in via browser
-4. EduGeyser calls:
-   a. tooling/edit_tenant_settings → {"DedicatedServerEnabled": True, "TeachersAllowed": True}
-   b. server/register → gets server ID (may need edu client app ID — test with tooling app ID first)
-   c. server/host → registers IP
-   d. tooling/edit_server_info → {"ServerId": "...", "Enabled": True, "IsBroadcasted": True, "ServerName": "..."}
-      (with api-version: 2.0 header)
-5. Server is live, visible in Education client server list
-6. Scheduled: server/update every 10s, token refresh every 30min
-```
-
-If the tooling app ID works for `server/register` and `server/fetch_token`, only one device code flow is needed. If not, two sequential flows (tooling + edu client) would be required — still a single-session admin experience.
-
----
-
-## 11. Potential New Features (Enabled by Tooling API Access)
+## 10. Potential Features (Enabled by Tooling API Access)
 
 ### In-game commands (using tooling token):
 
