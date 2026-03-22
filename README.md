@@ -1,3 +1,30 @@
+# EduGeyser
+
+A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Education Edition** clients to join **Java Edition** servers. Both Education and regular Bedrock players can connect to the same server simultaneously.
+
+## Features
+
+- **Education client authentication** - EduTokenChain JWT verification against MESS (Minecraft Education Server Services) public keys
+- **MESS server registration** - OAuth2 device code flow for automated server setup with Microsoft's education infrastructure
+- **Multi-tenancy** - Multiple schools (M365 tenants) can share a single server with per-tenant token routing
+- **Education codec** - Custom StartGamePacket serializer and education-specific packet handling (chemistry tables, NPCs, Code Builder)
+- **Education session management** - Gamerules, experiments, EducationSettingsPacket, and edu-specific block break handling
+- **Floodgate integration** - Deterministic UUID generation and username formatting for education players via [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate)
+- **Operator tools** - `/geyser edu` command for monitoring auth state, connected education players, and re-authentication
+
+## Downloads
+
+Pre-built jars are available on the [Releases](https://github.com/SendableMetatype/EduGeyser/releases) page.
+
+## Documentation
+
+- **[Setup Guide](https://github.com/SendableMetatype/EduGeyser/blob/full/SETUP-GUIDE.md)** - How to install and configure EduGeyser
+- **[MESS Tooling Reference](https://github.com/SendableMetatype/EduGeyser/blob/full/MESS-Tooling-Notebook-Reference.md)** - Technical reference for the Microsoft Education Server Services API
+
+For technical details on the authentication flow, protocol differences, and MESS API, see the **[Master Documentation](https://github.com/SendableMetatype/EduGeyser/blob/full/edugeyser-master-documentation.md)**.
+
+---
+
 <img src="https://geysermc.org/img/geyser-1760-860.png" alt="Geyser" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
