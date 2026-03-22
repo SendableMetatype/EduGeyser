@@ -81,6 +81,7 @@ import org.cloudburstmc.protocol.bedrock.packet.SetEntityLinkPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SettingsCommandPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SimpleEventPacket;
+import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 import org.cloudburstmc.protocol.bedrock.packet.SubChunkRequestPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SubClientLoginPacket;
 import org.cloudburstmc.protocol.common.util.VarInts;
@@ -252,7 +253,8 @@ class CodecProcessor {
         }
 
         BedrockCodec.Builder codecBuilder = codec.toBuilder()
-            // Illegal unused serverbound EDU packets
+            // Illegal unused serverbound packets for education features.
+            // These are re-enabled in EducationCodecProcessor for education sessions only.
             .updateSerializer(PhotoTransferPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(LabTablePacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(CodeBuilderSourcePacket.class, ILLEGAL_SERIALIZER)
