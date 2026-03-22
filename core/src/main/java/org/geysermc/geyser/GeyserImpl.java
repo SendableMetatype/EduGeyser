@@ -81,6 +81,8 @@ import org.geysermc.geyser.extension.GeyserExtensionManager;
 import org.geysermc.geyser.impl.MinecraftVersionImpl;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.WorldManager;
+import org.geysermc.geyser.network.EducationAuthManager;
+import org.geysermc.geyser.network.EducationTenancyMode;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.ping.GeyserLegacyPingPassthrough;
@@ -169,6 +171,9 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
     private ScheduledExecutorService scheduledThread;
 
     private GeyserServer geyserServer;
+    @Getter
+    private EducationAuthManager educationAuthManager;
+
     private final GeyserBootstrap bootstrap;
 
     private final GeyserEventBus eventBus;
@@ -505,6 +510,21 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             }
         }
 
+        // Initialize Education Edition auth manager and token pool
+        this.educationAuthManager = new EducationAuthManager();
+        this.educationAuthManager.setup(this);
+        EducationTenancyMode tenancyMode = config.education().tenancyMode();
+        if (tenancyMode != EducationTenancyMode.STANDALONE) {
+            this.educationAuthManager.initialize();
+        } else {
+            logger.debug("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
+        }
+        if (tenancyMode != EducationTenancyMode.OFFICIAL) {
+            this.educationAuthManager.loadConfigTokens();
+            this.educationAuthManager.loadStandaloneTokens();
+        }
+        logger.info(String.format("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount()));
+
         setupMetrics(config, logger);
 
         loadSavedAuthChains(config, logger);
@@ -587,6 +607,7 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
             bootstrap.getGeyserLogger().info(GeyserLocale.getLocaleStringLog("geyser.core.shutdown.kick.done"));
         }
 
+        runIfNonNull(educationAuthManager, EducationAuthManager::shutdown);
         runIfNonNull(scheduledThread, ScheduledExecutorService::shutdown);
         runIfNonNull(geyserServer, GeyserServer::shutdown);
         runIfNonNull(skinUploader, FloodgateSkinUploader::close);
