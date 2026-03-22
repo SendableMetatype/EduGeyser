@@ -58,7 +58,7 @@ Both methods give students a server list. **Method A** uses the included resourc
 
 ### Overview
 
-In Standalone Mode, you obtain a token from Microsoft's Education services using the EduGeyser Token Tool. The token authorizes your Geyser server to accept Education connections from your school's tenant. Students connect using the included server list resource pack (recommended) or a one-time link. The resource pack server list requires students to enter your server's IP once — after that, it's saved permanently.
+In Standalone Mode, you obtain a token from Microsoft's Education services that authorizes your Geyser server to accept Education connections from your school's tenant. You can obtain tokens using the `/geyser edu token` command (recommended) or the EduGeyser Token Tool as a fallback. Students connect using the included server list resource pack (recommended) or a one-time link. The resource pack server list requires students to enter your server's IP once — after that, it's saved permanently.
 
 ### Step 1: Install EduGeyser
 
@@ -68,21 +68,37 @@ In Standalone Mode, you obtain a token from Microsoft's Education services using
 
 ### Step 2: Obtain a Server Token
 
-You need a server token from Microsoft that authorizes your server for your school's tenant. Any student or teacher with an M365 Education account at the school can obtain one using the Token Tool.
+You need a server token from Microsoft that authorizes your server for your school's tenant. Any student or teacher with an M365 Education account at the school can obtain one.
 
-#### Option 1: EduGeyser Token Tool (Easiest)
+#### Option 1: `/geyser edu token` Command (Recommended)
+
+The easiest way to obtain a token is directly from the server console:
+
+1. Make sure your server is running with EduGeyser and `tenancy-mode` set to `standalone`
+2. Run `/geyser edu token` from the server console or in-game with admin permissions
+3. A device code will appear in the console — go to the URL and enter the code
+4. Sign in with any Microsoft 365 Education account from your school — student or teacher accounts both work
+5. The token is automatically saved and activated. No config editing needed
+
+Tokens obtained this way **auto-refresh** — you don't need to manually renew them. You can run the command multiple times with accounts from different schools to add multiple tenants.
+
+#### Option 2: EduGeyser Token Tool (Fallback)
+
+If the device code flow is blocked by your school's Conditional Access policies, use the Token Tool instead:
 
 1. Download the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) to any Windows computer — it doesn't need to be the same machine as your server. [Source code](education-tools/edu_token_tool_gui.py)
 2. Double-click the `.exe` to open it. No installation or admin privileges required
 3. Click the green **Sign in with Microsoft** button. A Windows sign-in dialog will appear
-4. Sign in with any Microsoft 365 Education account from your school — student or teacher accounts both work
+4. Sign in with any Microsoft 365 Education account from your school
 5. If your school uses multi-factor authentication, complete the MFA prompt as usual
 6. The tool will show a success screen with your account name, tenant ID, and the server token
 7. Click **Copy Token** to copy it to your clipboard, or **Save to File** to save it as a text file
 
-#### Option 2: Manual Fiddler Capture
+Tokens from the Token Tool must be pasted into `server-tokens` in the config and manually renewed when they expire (~2 weeks).
 
-If the EduGeyser Token Tool doesn't work for you, see the [Manual Token Capture Guide](MANUAL-TOKEN-CAPTURE.md) for an alternative method using Fiddler.
+#### Option 3: Manual Fiddler Capture
+
+If neither of the above options work, see the [Manual Token Capture Guide](MANUAL-TOKEN-CAPTURE.md) for an alternative method using Fiddler.
 
 ### Step 3: Configure Geyser
 
@@ -136,7 +152,8 @@ You have two options - see [How Students Connect](#how-students-connect) for ful
 
 ### Token Renewal
 
-The server token expires after approximately 2 weeks. When it expires, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update `server-tokens` in config.
+- **Tokens from `/geyser edu token`** refresh automatically — no action needed.
+- **Tokens from the Token Tool or Fiddler** expire after approximately 2 weeks. When they expire, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update `server-tokens` in config.
 
 Students using the resource pack won't need to re-enter the server address. Only the server-side token needs updating.
 
@@ -251,7 +268,7 @@ education:
     - "token-from-school-C"
 ```
 
-In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using tokens you obtain via the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe), using an account from each additional school.
+In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using tokens you obtain via `/geyser edu token` (recommended, auto-refreshes) or the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback, using an account from each additional school.
 
 Each token contains the school's tenant ID. EduGeyser parses them on startup and routes connecting students to the correct token automatically.
 
@@ -368,7 +385,7 @@ All education settings are under the `education:` subsection in `config.yml`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `education-prefix` | `"#"` | Prefix for Education player usernames (e.g., `#Mark7b91`). Must be different from the Bedrock prefix (`.`). |
+| `education-prefix` | `"+"` | Prefix for Education player usernames (e.g., `+Mark7b91`). Must be different from the Bedrock prefix (`.`). |
 
 ### Required Geyser Settings
 
@@ -389,6 +406,7 @@ auth-type: floodgate
 |---------|-------------|
 | `/geyser edu` or `/geyser edu status` | Shows Education system status: active/inactive, server ID, IP, token expiry, player count, verified/unverified/rejected join stats |
 | `/geyser edu players` | Lists all connected Education Edition players with their school tenant and role (student/teacher) |
+| `/geyser edu token` | Starts a device code flow to obtain a server token for standalone/hybrid mode. Tokens auto-refresh. Can be run multiple times for different schools. |
 | `/geyser edu reset` | Deletes saved tokens and restarts device code authentication. Use if authentication breaks. |
 
 Permission: `geyser.command.edu`
@@ -419,17 +437,18 @@ This usually means the server is not running EduGeyser (the modified Geyser with
 
 The school's M365 tenant has **Conditional Access** policies that block the device code authentication flow. This is common in large school districts with strict security policies.
 
-**Workaround:** Use Standalone Mode (Method A) instead. The EduGeyser Token Tool uses a different authentication method that is not affected by Conditional Access policies.
+**Workaround:** Use Standalone Mode (Method A) with the EduGeyser Token Tool instead. The Token Tool uses a different authentication method that is not affected by Conditional Access policies.
 
 ### Device code flow times out / no prompt appears
 
-- Make sure you're signing in with a **Global Admin** account, not a regular teacher or student account.
+- For **Dedicated Server Mode (Method B)**, make sure you're signing in with a **Global Admin** account. For **`/geyser edu token`**, any student or teacher account works.
 - The device code expires after about 15 minutes. If it times out, restart the server to get a new code.
 - Check that your tenant has an active Minecraft Education license.
+- If the device code flow is blocked by Conditional Access policies, use the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback (see [Method A Step 2](#step-2-obtain-a-server-token)).
 
-### Education players have weird usernames like `#Mark7b91`
+### Education players have weird usernames like `+Mark7b91`
 
-This is the Education username format: `#` prefix + player name + 4-character tenant hash. The hash distinguishes players from different schools who might share the same name. It is derived from the school's tenant ID.
+This is the Education username format: `+` prefix + player name + 4-character tenant hash. The hash distinguishes players from different schools who might share the same name. It is derived from the school's tenant ID.
 
 ### Server shows "offline" in the Education server list but students can still connect
 
@@ -473,7 +492,8 @@ The software is free. If you need your own M365 Education tenant for testing (Me
 
 ### How long do tokens last?
 
-- **Standalone/Hybrid config tokens:** ~2 weeks. Must be manually refreshed.
+- **Config tokens (from Token Tool or Fiddler):** ~2 weeks. Must be manually refreshed.
+- **`/geyser edu token` tokens:** Auto-refresh every 30 minutes. No manual intervention needed.
 - **Dedicated Server Mode (MESS):** Tokens refresh automatically every 30 minutes. No manual intervention needed after initial setup.
 
 ### Can students from different schools join the same server?
