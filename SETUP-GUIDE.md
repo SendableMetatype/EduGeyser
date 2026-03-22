@@ -125,7 +125,7 @@ If the device code flow is blocked by your school's Conditional Access policies,
    ```
 9. Restart the server
 
-Tokens from the Token Tool must be manually renewed when they expire (~2 weeks). If you have students from **multiple schools**, add a token from each school:
+Tokens from the Token Tool must be manually renewed when they expire (~10 days). If you have students from **multiple schools**, add a token from each school:
 ```yaml
 education:
   server-tokens:
@@ -152,7 +152,7 @@ You have two options - see [How Students Connect](#how-students-connect) for ful
 ### Token Renewal
 
 - **Tokens from `/geyser edu token`** refresh automatically — no action needed.
-- **Tokens from the Token Tool or Fiddler** expire after approximately 2 weeks. When they expire, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update `server-tokens` in config.
+- **Tokens from the Token Tool or Fiddler** expire after approximately 10 days. When they expire, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update `server-tokens` in config.
 
 Students using the resource pack won't need to re-enter the server address. Only the server-side token needs updating.
 
@@ -420,7 +420,7 @@ The server has no token matching the connecting student's school tenant.
 
 - **Standalone Mode:** Make sure you have a token from the student's school in `server-tokens`. Each token only works for the school it was obtained from.
 - **Dedicated Server Mode:** Run `/geyser edu reset` to re-authenticate. If the student is from a different school, enable cross-tenant or use hybrid mode to add their school's token.
-- **Token expired:** Tokens last about 2 weeks. Get a fresh one and update the config.
+- **Token expired:** Tokens last about 10 days. Get a fresh one and update the config.
 
 ### "An error occurred" immediately after connecting
 
@@ -491,7 +491,7 @@ The software is free. If you need your own M365 Education tenant for testing (Me
 
 ### How long do tokens last?
 
-- **Config tokens (from Token Tool or Fiddler):** ~2 weeks. Must be manually refreshed.
+- **Config tokens (from Token Tool or Fiddler):** ~10 days. Must be manually refreshed.
 - **`/geyser edu token` tokens:** Auto-refresh every 30 minutes. No manual intervention needed.
 - **Dedicated Server Mode (MESS):** Tokens refresh automatically every 30 minutes. No manual intervention needed after initial setup.
 
