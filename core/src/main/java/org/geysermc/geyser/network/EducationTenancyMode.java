@@ -29,6 +29,8 @@ package org.geysermc.geyser.network;
  * Determines how the education server registers with MESS and verifies clients.
  *
  * <ul>
+ *   <li>{@link #OFF} — Education support is disabled. No education code runs.
+ *       Education clients are rejected on connect.</li>
  *   <li>{@link #OFFICIAL} — MESS-registered. All clients must be verified via nonce.</li>
  *   <li>{@link #HYBRID} — MESS-registered, but additional tenants from server-tokens
  *       are allowed without nonce verification (config trust).</li>
@@ -37,6 +39,7 @@ package org.geysermc.geyser.network;
  * </ul>
  */
 public enum EducationTenancyMode {
+    OFF,
     OFFICIAL,
     HYBRID,
     STANDALONE
