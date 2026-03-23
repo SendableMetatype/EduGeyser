@@ -121,7 +121,6 @@ public class EducationAuthManager {
     private @Nullable String serverName;
     private int maxPlayers;
 
-
     // Tooling token state (tooling app ID - for tooling/* endpoints)
     private volatile @Nullable String refreshToken;
     private volatile @Nullable String accessToken;
