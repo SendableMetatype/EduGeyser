@@ -218,11 +218,11 @@ Leave `server-id` empty. It will be filled automatically after first registratio
 Start the server. EduGeyser will display a message like:
 
 ```
-[EduGeyser] ============================================
-[EduGeyser] Education Edition Authentication Required
-[EduGeyser] Go to: https://microsoft.com/devicelogin
-[EduGeyser] Enter code: ABCD1234
-[EduGeyser] ============================================
+[EduTooling] ============================================
+[EduTooling]   Go to: https://microsoft.com/devicelogin
+[EduTooling]   Enter code: ABCD1234
+[EduTooling]   (tooling authentication)
+[EduTooling] ============================================
 ```
 
 1. Open the URL in a web browser (any device)
@@ -240,9 +240,10 @@ Once both sign-ins are complete, EduGeyser will:
 
 You should see:
 ```
-[EduGeyser] Server registered with MESS. Server ID: UXHG99K8JX2P
-[EduGeyser] Server hosted at play.myserver.com:19132
-[EduGeyser] Education Edition support is now active.
+[EduTooling] Server registered with ID: UXHG99K8JX2P
+[EduTooling] Server hosted at play.myserver.com:19132
+[EduTooling] Server is fully configured and broadcasted.
+[EduTooling] Students can now connect from the server list.
 ```
 
 ### Step 5: Students Connect
