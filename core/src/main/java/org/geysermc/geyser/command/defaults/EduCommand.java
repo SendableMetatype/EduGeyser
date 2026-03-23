@@ -188,7 +188,7 @@ public class EduCommand extends GeyserCommand {
         GeyserCommandSource source = context.sender();
         EducationAuthManager eduAuth = geyser.getEducationAuthManager();
 
-        if (eduAuth == null) {
+        if (eduAuth == null || geyser.config().education().tenancyMode() == EducationTenancyMode.OFF) {
             source.sendMessage(ChatColor.RED + "Education system is not initialized.");
             return;
         }
@@ -206,12 +206,12 @@ public class EduCommand extends GeyserCommand {
         GeyserCommandSource source = context.sender();
         EducationAuthManager eduAuth = geyser.getEducationAuthManager();
 
-        if (eduAuth == null) {
+        EducationTenancyMode mode = geyser.config().education().tenancyMode();
+        if (eduAuth == null || mode == EducationTenancyMode.OFF) {
             source.sendMessage(ChatColor.RED + "Education system is not initialized.");
             return;
         }
 
-        EducationTenancyMode mode = geyser.config().education().tenancyMode();
         if (mode == EducationTenancyMode.OFFICIAL) {
             source.sendMessage(ChatColor.RED + "Token command is not available in official mode.");
             source.sendMessage(ChatColor.GRAY + "Official mode obtains tokens automatically via MESS registration.");

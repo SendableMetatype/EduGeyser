@@ -191,31 +191,43 @@ public class EducationAuthManager {
             return;
         }
         try {
-            Files.writeString(officialFilePath, """
-                    # ============================================================
-                    # EduGeyser Official Server Configuration
-                    # ============================================================
-                    # Configure these fields for official/hybrid tenancy mode.
-                    # This file is also used to store MESS session data (below the config section).
-
-                    # Display name for the server in Education Edition's server list.
-                    server-name: ""
-
-                    # Public IP:port for MESS registration (e.g. "mc.example.com:19132").
-                    # If empty, Geyser will attempt to auto-detect your public IP.
-                    # Recommended to set this manually, especially behind NAT or proxies.
-                    server-ip: ""
-
-                    # Maximum players shown in the Education Edition server list.
-                    max-players: 40
-
-                    # --- Session data (managed automatically, do not edit below this line) ---
-                    server-id: ""
-                    """);
+            Files.writeString(officialFilePath, buildOfficialYaml("", "", 40, "", null, null, 0, null, null, 0, null, null, 0));
             logger.debug(LOG_PREFIX + "Generated " + OFFICIAL_FILE);
         } catch (IOException e) {
             logger.error(LOG_PREFIX + "Failed to generate " + OFFICIAL_FILE + ": " + e.getMessage());
         }
+    }
+
+    private static String buildOfficialYaml(String serverName, String serverIp, int maxPlayers,
+                                            String serverId, @Nullable String refreshToken, @Nullable String accessToken,
+                                            long accessTokenExpires, @Nullable String eduRefreshToken,
+                                            @Nullable String eduAccessToken, long eduAccessTokenExpires,
+                                            @Nullable String serverToken, @Nullable String serverTokenJwt,
+                                            long serverTokenExpires) {
+        return "# ============================================================\n" +
+            "# EduGeyser Official Server Configuration\n" +
+            "# ============================================================\n" +
+            "# Configure these fields for official/hybrid tenancy mode.\n" +
+            "# This file is also used to store MESS session data (below the config section).\n\n" +
+            "# Display name for the server in Education Edition's server list.\n" +
+            "server-name: \"" + escapeYaml(serverName) + "\"\n\n" +
+            "# Public IP:port for MESS registration (e.g. \"mc.example.com:19132\").\n" +
+            "# If empty, Geyser will attempt to auto-detect your public IP.\n" +
+            "# Recommended to set this manually, especially behind NAT or proxies.\n" +
+            "server-ip: \"" + escapeYaml(serverIp) + "\"\n\n" +
+            "# Maximum players shown in the Education Edition server list.\n" +
+            "max-players: " + maxPlayers + "\n\n" +
+            "# --- Session data (managed automatically, do not edit below this line) ---\n" +
+            "server-id: \"" + escapeYaml(serverId) + "\"\n" +
+            "refresh-token: " + yamlStringOrNull(refreshToken) + "\n" +
+            "access-token: " + yamlStringOrNull(accessToken) + "\n" +
+            "access-token-expires: " + accessTokenExpires + "\n" +
+            "edu-refresh-token: " + yamlStringOrNull(eduRefreshToken) + "\n" +
+            "edu-access-token: " + yamlStringOrNull(eduAccessToken) + "\n" +
+            "edu-access-token-expires: " + eduAccessTokenExpires + "\n" +
+            "server-token: " + yamlStringOrNull(serverToken) + "\n" +
+            "server-token-jwt: " + yamlStringOrNull(serverTokenJwt) + "\n" +
+            "server-token-expires: " + serverTokenExpires + "\n";
     }
 
     /**
@@ -226,24 +238,41 @@ public class EducationAuthManager {
             return;
         }
         try {
-            Files.writeString(standaloneFilePath, """
-                    # ============================================================
-                    # EduGeyser Standalone Token Configuration
-                    # ============================================================
-                    # Paste server tokens from the EduGeyser Token Tool here.
-                    # Each token authorizes one school's tenant.
-                    tokens:
-                      - ""
-                      - ""
-                      - ""
-
-                    # --- Device-code tokens (managed automatically, do not edit below this line) ---
-                    device-code-tokens: []
-                    """);
+            Files.writeString(standaloneFilePath, buildStandaloneYaml(
+                java.util.List.of("", "", ""), java.util.List.of()
+            ));
             logger.debug(LOG_PREFIX + "Generated " + STANDALONE_FILE);
         } catch (IOException e) {
             logger.error(LOG_PREFIX + "Failed to generate " + STANDALONE_FILE + ": " + e.getMessage());
         }
+    }
+
+    private static String buildStandaloneYaml(java.util.List<String> manualTokens,
+                                               java.util.List<StandaloneTokenEntry> deviceCodeTokens) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# ============================================================\n");
+        sb.append("# EduGeyser Standalone Token Configuration\n");
+        sb.append("# ============================================================\n");
+        sb.append("# Paste server tokens from the EduGeyser Token Tool here.\n");
+        sb.append("# Each token authorizes one school's tenant.\n");
+        sb.append("tokens:\n");
+        for (String token : manualTokens) {
+            sb.append("  - \"").append(escapeYaml(token)).append("\"\n");
+        }
+        sb.append("\n# --- Device-code tokens (managed automatically, do not edit below this line) ---\n");
+        if (deviceCodeTokens.isEmpty()) {
+            sb.append("device-code-tokens: []\n");
+        } else {
+            sb.append("device-code-tokens:\n");
+            for (StandaloneTokenEntry entry : deviceCodeTokens) {
+                sb.append("  - tenant-id: \"").append(escapeYaml(entry.tenantId)).append("\"\n");
+                if (entry.refreshToken != null) {
+                    sb.append("    refresh-token: \"").append(escapeYaml(entry.refreshToken)).append("\"\n");
+                }
+                sb.append("    server-token: \"").append(escapeYaml(entry.serverToken)).append("\"\n");
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -290,32 +319,12 @@ public class EducationAuthManager {
                 }
 
                 String sid = (serverId != null && !serverId.isEmpty()) ? serverId : "";
-                Files.writeString(officialFilePath,
-                    "# ============================================================\n" +
-                    "# EduGeyser Official Server Configuration\n" +
-                    "# ============================================================\n" +
-                    "# Configure these fields for official/hybrid tenancy mode.\n" +
-                    "# This file is also used to store MESS session data (below the config section).\n\n" +
-                    "# Display name for the server in Education Edition's server list.\n" +
-                    "server-name: \"" + escapeYaml(cfgServerName) + "\"\n\n" +
-                    "# Public IP:port for MESS registration (e.g. \"mc.example.com:19132\").\n" +
-                    "# If empty, Geyser will attempt to auto-detect your public IP.\n" +
-                    "# Recommended to set this manually, especially behind NAT or proxies.\n" +
-                    "server-ip: \"" + escapeYaml(cfgServerIp) + "\"\n\n" +
-                    "# Maximum players shown in the Education Edition server list.\n" +
-                    "max-players: " + cfgMaxPlayers + "\n\n" +
-                    "# --- Session data (managed automatically, do not edit below this line) ---\n" +
-                    "server-id: \"" + escapeYaml(sid) + "\"\n" +
-                    "refresh-token: " + yamlStringOrNull(refreshToken) + "\n" +
-                    "access-token: " + yamlStringOrNull(accessToken) + "\n" +
-                    "access-token-expires: " + accessTokenExpires + "\n" +
-                    "edu-refresh-token: " + yamlStringOrNull(eduRefreshToken) + "\n" +
-                    "edu-access-token: " + yamlStringOrNull(eduAccessToken) + "\n" +
-                    "edu-access-token-expires: " + eduAccessTokenExpires + "\n" +
-                    "server-token: " + yamlStringOrNull(serverToken) + "\n" +
-                    "server-token-jwt: " + yamlStringOrNull(serverTokenJwt) + "\n" +
-                    "server-token-expires: " + serverTokenExpires + "\n"
-                );
+                Files.writeString(officialFilePath, buildOfficialYaml(
+                    cfgServerName, cfgServerIp, cfgMaxPlayers, sid,
+                    refreshToken, accessToken, accessTokenExpires,
+                    eduRefreshToken, eduAccessToken, eduAccessTokenExpires,
+                    serverToken, serverTokenJwt, serverTokenExpires
+                ));
             } catch (Exception e) {
                 logger.error(LOG_PREFIX + "Failed to save " + OFFICIAL_FILE + ": " + e.getMessage(), e);
             }
@@ -371,7 +380,6 @@ public class EducationAuthManager {
      */
     public void initialize() {
         loadOfficialConfig();
-
 
         boolean hasServerId = serverId != null && !serverId.isEmpty();
         boolean hasServerName = serverName != null && !serverName.isEmpty();
@@ -532,7 +540,6 @@ public class EducationAuthManager {
     public long getServerTokenExpires() {
         return serverTokenExpires;
     }
-
 
     /**
      * Deletes the current session and starts a fresh device code authentication flow.
@@ -1945,31 +1952,9 @@ public class EducationAuthManager {
                     manualTokens.add("");
                 }
 
-                StringBuilder sb = new StringBuilder();
-                sb.append("# ============================================================\n");
-                sb.append("# EduGeyser Standalone Token Configuration\n");
-                sb.append("# ============================================================\n");
-                sb.append("# Paste server tokens from the EduGeyser Token Tool here.\n");
-                sb.append("# Each token authorizes one school's tenant.\n");
-                sb.append("tokens:\n");
-                for (String token : manualTokens) {
-                    sb.append("  - \"").append(escapeYaml(token)).append("\"\n");
-                }
-                sb.append("\n# --- Device-code tokens (managed automatically, do not edit below this line) ---\n");
-                if (standaloneTokens.isEmpty()) {
-                    sb.append("device-code-tokens: []\n");
-                } else {
-                    sb.append("device-code-tokens:\n");
-                    for (StandaloneTokenEntry entry : standaloneTokens) {
-                        sb.append("  - tenant-id: \"").append(escapeYaml(entry.tenantId)).append("\"\n");
-                        if (entry.refreshToken != null) {
-                            sb.append("    refresh-token: \"").append(escapeYaml(entry.refreshToken)).append("\"\n");
-                        }
-                        sb.append("    server-token: \"").append(escapeYaml(entry.serverToken)).append("\"\n");
-                    }
-                }
-
-                Files.writeString(standaloneFilePath, sb.toString());
+                Files.writeString(standaloneFilePath, buildStandaloneYaml(
+                    manualTokens, new java.util.ArrayList<>(standaloneTokens)
+                ));
             } catch (Exception e) {
                 logger.error("[EduToken] Failed to save device-code tokens to " + STANDALONE_FILE + ": " + e.getMessage(), e);
             }
