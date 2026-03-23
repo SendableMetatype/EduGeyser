@@ -80,7 +80,7 @@ Also make sure `auth-type` is set to `floodgate`:
 auth-type: floodgate
 ```
 
-That's it for config. Start the server — you'll obtain a token in the next step.
+Start the server once — EduGeyser will generate `edu_standalone.yml` automatically. You'll obtain a token in the next step.
 
 ### Step 3: Obtain a Server Token
 
@@ -116,21 +116,20 @@ If the device code flow is blocked by your school's Conditional Access policies,
 5. If your school uses multi-factor authentication, complete the MFA prompt as usual
 6. The tool will show a success screen with your account name, tenant ID, and the server token
 7. Click **Copy Token** to copy it to your clipboard, or **Save to File** to save it as a text file
-8. Open your Geyser config file and paste the token:
+8. Open `edu_standalone.yml` in your Geyser config directory and paste the token into one of the empty slots:
    ```yaml
-   education:
-     tenancy-mode: standalone
-     server-tokens:
-       - "paste-your-full-server-token-here"
+   tokens:
+     - "paste-your-full-server-token-here"
+     - ""
+     - ""
    ```
 9. Restart the server
 
 Tokens from the Token Tool must be manually renewed when they expire (~10 days). If you have students from **multiple schools**, add a token from each school:
 ```yaml
-education:
-  server-tokens:
-    - "token-from-school-A"
-    - "token-from-school-B"
+tokens:
+  - "token-from-school-A"
+  - "token-from-school-B"
 ```
 
 #### Option 3: Manual Fiddler Capture
@@ -190,17 +189,26 @@ Open your Geyser config file and set:
 
 ```yaml
 education:
-  # This enables the automatic MESS integration.
-  # The name will appear in Education Edition's server list.
-  server-name: "My School's Java Server"
+  tenancy-mode: official
+```
 
-  # Maximum player count shown in the server list.
-  max-players: 40
+Also make sure `auth-type` is set to `floodgate`:
+```yaml
+auth-type: floodgate
+```
 
-  # Your server's public IP and Geyser port.
-  # If left empty, EduGeyser will try to auto-detect your public IP.
-  # Recommended to set this manually, especially if behind NAT.
-  server-ip: "play.myserver.com:19132"
+Start the server once to generate `edu_official.yml`, then stop it. Open `edu_official.yml` and configure:
+
+```yaml
+# Display name for the server in Education Edition's server list.
+server-name: "My School's Java Server"
+
+# Public IP:port for MESS registration.
+# Recommended to set this manually, especially if behind NAT.
+server-ip: "play.myserver.com:19132"
+
+# Maximum players shown in the Education Edition server list.
+max-players: 40
 ```
 
 Leave `server-id` empty. It will be filled automatically after first registration.
@@ -228,7 +236,7 @@ Once both sign-ins are complete, EduGeyser will:
 - Obtain a server token automatically
 - Register your server's IP so it appears in the Education server list
 - Begin sending heartbeats to keep the server listed as "online"
-- Save all tokens to `edu_session.json` for automatic renewal on future restarts
+- Save all tokens to `edu_official.yml` for automatic renewal on future restarts
 
 You should see:
 ```
@@ -255,19 +263,11 @@ Cross-tenant access can be configured through the MESS tooling API. Both the hos
 
 #### Option 2: Hybrid Mode (Token-Based)
 
-Alternatively, you can use **hybrid mode** to manually add tokens for additional schools:
+Alternatively, you can use **hybrid mode** to manually add tokens for additional schools.
 
-```yaml
-education:
-  tenancy-mode: hybrid
+Set `tenancy-mode: hybrid` in `config.yml`, then add tokens for additional schools in `edu_standalone.yml` using `/geyser edu token` (recommended, auto-refreshes) or the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback.
 
-  # Tokens for additional schools (your primary school is handled by MESS automatically)
-  server-tokens:
-    - "token-from-school-B"
-    - "token-from-school-C"
-```
-
-In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using tokens you obtain via `/geyser edu token` (recommended, auto-refreshes) or the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback, using an account from each additional school.
+In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using the tokens in `edu_standalone.yml`.
 
 Each token contains the school's tenant ID. EduGeyser parses them on startup and routes connecting students to the correct token automatically.
 
@@ -320,13 +320,14 @@ The downside: this is a one-time connection. Students would need the link again 
 
 ## Multi-Tenancy (Multiple Schools)
 
-EduGeyser supports three tenancy modes that control how server tokens are managed:
+EduGeyser supports three tenancy modes (plus `off` to disable). Set `tenancy-mode` in `config.yml`:
 
 | Mode | Config Value | How Tokens Work |
 |------|-------------|-----------------|
-| **Official** | `official` | MESS handles everything. One token from your registration serves all tenants. `server-tokens` is ignored. This is the default. |
-| **Hybrid** | `hybrid` | MESS handles your primary school. Additional schools are supported via tokens in `server-tokens`. |
-| **Standalone** | `standalone` | No MESS registration at all. All tokens come from `server-tokens`. |
+| **Off** | `off` | Education support is disabled. Education clients are rejected. (default) |
+| **Official** | `official` | MESS handles everything. Server config in `edu_official.yml`. |
+| **Hybrid** | `hybrid` | MESS handles your primary school. Additional schools via tokens in `edu_standalone.yml`. |
+| **Standalone** | `standalone` | No MESS registration. All tokens come from `edu_standalone.yml`. |
 
 ### How Token Routing Works
 
@@ -336,32 +337,26 @@ When an Education Edition student connects, EduGeyser extracts their school's te
 
 ### Example: Standalone with Two Schools
 
+Set `tenancy-mode: standalone` in `config.yml`, then in `edu_standalone.yml`:
+
 ```yaml
-education:
-  tenancy-mode: standalone
-  server-tokens:
-    - "03b5e7a1-...|e2a49ff3-...|2026-03-25T...|41863f21..."
-    - "a1b2c3d4-...|f5e6d7c8-...|2026-03-25T...|8bc9af01..."
+tokens:
+  - "03b5e7a1-...|e2a49ff3-...|2026-03-25T...|41863f21..."
+  - "a1b2c3d4-...|f5e6d7c8-...|2026-03-25T...|8bc9af01..."
 ```
 
 On startup you'll see:
 ```
-[EduTenancy] Registered token for tenant 03b5e7a1-... (source: config server-tokens)
-[EduTenancy] Registered token for tenant a1b2c3d4-... (source: config server-tokens)
-[EduTenancy] Tenancy mode: standalone, registered tenants: 2
+[EduTenancy] Registered token for tenant 03b5e7a1-... (source: edu_standalone.yml)
+[EduTenancy] Registered token for tenant a1b2c3d4-... (source: edu_standalone.yml)
+[EduTenancy] Tenancy mode: STANDALONE, registered tenants: 2
 ```
 
 ### Example: Hybrid with MESS + One Extra School
 
-```yaml
-education:
-  server-name: "My School's Server"
-  tenancy-mode: hybrid
-  server-tokens:
-    - "token-from-partner-school"
-```
+Set `tenancy-mode: hybrid` in `config.yml`. Configure your primary school in `edu_official.yml`, then add the partner school's token in `edu_standalone.yml` or via `/geyser edu token`.
 
-Your primary school connects via MESS (automatic token). The partner school connects via the config token.
+Your primary school connects via MESS (automatic token). The partner school connects via the standalone token.
 
 ---
 
@@ -369,16 +364,31 @@ Your primary school connects via MESS (automatic token). The partner school conn
 
 ### EduGeyser Config (`config.yml`)
 
-All education settings are under the `education:` subsection in `config.yml`:
+| Option | Default | Description |
+|--------|---------|-------------|
+| `education.tenancy-mode` | `"off"` | `"off"` = disabled, `"official"` = MESS registration, `"hybrid"` = MESS + standalone tokens, `"standalone"` = standalone tokens only. |
+
+### Official Server Config (`edu_official.yml`)
+
+Generated automatically on startup. Used for official/hybrid modes.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `tenancy-mode` | `"official"` | How tokens are managed. `"official"` = MESS only, `"hybrid"` = MESS + config tokens, `"standalone"` = config tokens only. |
-| `server-tokens` | `[]` | List of server tokens for hybrid/standalone mode. Each token's tenant ID is extracted automatically on startup. |
-| `server-name` | `""` | Server name for the Education server list. Setting this enables Dedicated Server Mode (MESS registration). |
-| `server-id` | `""` | Auto-filled after first MESS registration. Don't set manually unless restoring a backup. |
-| `server-ip` | `""` | Public IP:port for MESS registration. Auto-detected if empty. Set manually if behind NAT. |
-| `max-players` | `40` | Player limit shown in the Education server list (MESS only). |
+| `server-name` | `""` | Display name in the Education server list. |
+| `server-ip` | `""` | Public IP:port for MESS registration. Auto-detected if empty. |
+| `max-players` | `40` | Player limit shown in the Education server list. |
+| `server-id` | `""` | Auto-filled after first MESS registration. Don't edit manually. |
+
+Session data (tokens, refresh tokens, expiry) is stored below the config fields and managed automatically.
+
+### Standalone Token Config (`edu_standalone.yml`)
+
+Generated automatically on startup. Used for standalone/hybrid modes.
+
+| Section | Description |
+|---------|-------------|
+| `tokens:` | Paste server tokens from the EduGeyser Token Tool here. Each token authorizes one school's tenant. |
+| `device-code-tokens:` | Managed automatically by `/geyser edu token`. Do not edit. |
 
 ### EduFloodgate Config (`config.yml`)
 
@@ -403,7 +413,7 @@ auth-type: floodgate
 
 | Command | Description |
 |---------|-------------|
-| `/geyser edu` or `/geyser edu status` | Shows Education system status: active/inactive, server ID, IP, token expiry, player count, verified/unverified/rejected join stats |
+| `/geyser edu` or `/geyser edu status` | Shows Education system status, tenancy mode, tenant table with token health, and player count. Shows Server ID/IP for official/hybrid modes. |
 | `/geyser edu players` | Lists all connected Education Edition players with their school tenant and role (student/teacher) |
 | `/geyser edu token` | Starts a device code flow to obtain a server token for standalone/hybrid mode. Tokens auto-refresh. Can be run multiple times for different schools. |
 | `/geyser edu reset` | Deletes saved tokens and restarts device code authentication. Use if authentication breaks. |
@@ -418,7 +428,7 @@ Permission: `geyser.command.edu`
 
 The server has no token matching the connecting student's school tenant.
 
-- **Standalone Mode:** Make sure you have a token from the student's school in `server-tokens`. Each token only works for the school it was obtained from.
+- **Standalone Mode:** Make sure you have a token from the student's school in `edu_standalone.yml`. Each token only works for the school it was obtained from.
 - **Dedicated Server Mode:** Run `/geyser edu reset` to re-authenticate. If the student is from a different school, enable cross-tenant or use hybrid mode to add their school's token.
 - **Token expired:** Tokens last about 10 days. Get a fresh one and update the config.
 
@@ -491,7 +501,7 @@ The software is free. If you need your own M365 Education tenant for testing (Me
 
 ### How long do tokens last?
 
-- **Config tokens (from Token Tool or Fiddler):** ~10 days. Must be manually refreshed.
+- **Manual tokens in `edu_standalone.yml` (from Token Tool or Fiddler):** ~10 days. Must be manually refreshed.
 - **`/geyser edu token` tokens:** Auto-refresh every 30 minutes. No manual intervention needed.
 - **Dedicated Server Mode (MESS):** Tokens refresh automatically every 30 minutes. No manual intervention needed after initial setup.
 
@@ -500,7 +510,7 @@ The software is free. If you need your own M365 Education tenant for testing (Me
 Yes, there are two ways:
 
 1. **Cross-tenant via MESS** (Dedicated Server Mode): Enable cross-tenant through the MESS tooling API. Both the hosting and joining tenants need to enable cross-tenant settings. See the [MESS Tooling Reference](MESS-Tooling-Notebook-Reference.md) for details.
-2. **Hybrid or standalone mode**: Add a server token from each school to `server-tokens` in the config. EduGeyser routes each student to the correct token based on their school's tenant ID. This works with any setup method.
+2. **Hybrid or standalone mode**: Add a server token from each school via `/geyser edu token` or by pasting tokens in `edu_standalone.yml`. EduGeyser routes each student to the correct token based on their school's tenant ID.
 
 ---
 
