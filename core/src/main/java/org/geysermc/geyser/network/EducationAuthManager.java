@@ -120,7 +120,7 @@ public class EducationAuthManager {
     private @Nullable String serverIp;
     private @Nullable String serverName;
     private int maxPlayers;
-    private @Nullable Path sessionFilePath;
+
 
     // Tooling token state (tooling app ID - for tooling/* endpoints)
     private volatile @Nullable String refreshToken;
@@ -176,8 +176,6 @@ public class EducationAuthManager {
         this.logger = geyser.getLogger();
         this.officialFilePath = geyser.configDirectory().resolve(OFFICIAL_FILE);
         this.standaloneFilePath = geyser.configDirectory().resolve(STANDALONE_FILE);
-        // Keep sessionFilePath pointing to the official file for session save/load
-        this.sessionFilePath = officialFilePath;
 
         generateOfficialFile();
         generateStandaloneFile();
@@ -546,8 +544,8 @@ public class EducationAuthManager {
      * @return true if the reset was initiated, false if education is not configured
      */
     public boolean resetAndReauthenticate() {
-        if (sessionFilePath == null) {
-            // Education not configured — initialize() returned early or was never called
+        if (geyser == null) {
+            // setup() was never called
             return false;
         }
         logger.info(LOG_PREFIX + "Resetting session and starting re-authentication...");
