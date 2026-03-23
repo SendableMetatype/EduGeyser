@@ -55,8 +55,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
@@ -236,7 +239,7 @@ public class EducationAuthManager {
         }
         try {
             Files.writeString(standaloneFilePath, buildStandaloneYaml(
-                java.util.List.of("", "", ""), java.util.List.of()
+                List.of("", "", ""), List.of()
             ));
             logger.debug(LOG_PREFIX + "Generated " + STANDALONE_FILE);
         } catch (IOException e) {
@@ -244,8 +247,8 @@ public class EducationAuthManager {
         }
     }
 
-    private static String buildStandaloneYaml(java.util.List<String> manualTokens,
-                                               java.util.List<StandaloneTokenEntry> deviceCodeTokens) {
+    private static String buildStandaloneYaml(List<String> manualTokens,
+                                               List<StandaloneTokenEntry> deviceCodeTokens) {
         StringBuilder sb = new StringBuilder();
         sb.append("# ============================================================\n");
         sb.append("# EduGeyser Standalone Token Configuration\n");
@@ -1527,7 +1530,7 @@ public class EducationAuthManager {
                 }
                 return null;
             }
-            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(EducationChainVerifier.padBase64(parts[1])));
+            String payloadJson = new String(Base64.getUrlDecoder().decode(EducationChainVerifier.padBase64(parts[1])));
             JsonObject payload = JsonParser.parseString(payloadJson).getAsJsonObject();
 
             if (!payload.has("chain")) {
@@ -1613,10 +1616,10 @@ public class EducationAuthManager {
      * Returns a snapshot of all tenants in the token pool with their status info.
      * Each entry contains: tenant ID, source (MESS/config/device-code), token status, expiry.
      */
-    public java.util.List<TenantStatusInfo> getTenantStatusList() {
-        java.util.List<TenantStatusInfo> result = new java.util.ArrayList<>();
+    public List<TenantStatusInfo> getTenantStatusList() {
+        List<TenantStatusInfo> result = new ArrayList<>();
         // Collect device-code tenant IDs for source detection
-        java.util.Set<String> deviceCodeTenants = new java.util.HashSet<>();
+        Set<String> deviceCodeTenants = new HashSet<>();
         for (StandaloneTokenEntry entry : standaloneTokens) {
             deviceCodeTenants.add(entry.tenantId);
         }
@@ -1933,7 +1936,7 @@ public class EducationAuthManager {
         synchronized (sessionFileLock) {
             try {
                 // Read current manual tokens from file to preserve user edits
-                java.util.List<String> manualTokens = new java.util.ArrayList<>();
+                List<String> manualTokens = new ArrayList<>();
                 if (Files.exists(standaloneFilePath)) {
                     var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
                             .path(standaloneFilePath).build();
@@ -1950,7 +1953,7 @@ public class EducationAuthManager {
                 }
 
                 Files.writeString(standaloneFilePath, buildStandaloneYaml(
-                    manualTokens, new java.util.ArrayList<>(standaloneTokens)
+                    manualTokens, new ArrayList<>(standaloneTokens)
                 ));
             } catch (Exception e) {
                 logger.error("[EduToken] Failed to save device-code tokens to " + STANDALONE_FILE + ": " + e.getMessage(), e);
