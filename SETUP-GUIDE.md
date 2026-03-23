@@ -151,7 +151,7 @@ You have two options - see [How Students Connect](#how-students-connect) for ful
 ### Token Renewal
 
 - **Tokens from `/geyser edu token`** refresh automatically — no action needed.
-- **Tokens from the Token Tool or Fiddler** expire after approximately 10 days. When they expire, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update `server-tokens` in config.
+- **Tokens from the Token Tool or Fiddler** expire after approximately 10 days. When they expire, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update the `tokens:` list in `edu_standalone.yml`.
 
 Students using the resource pack won't need to re-enter the server address. Only the server-side token needs updating.
 
@@ -454,7 +454,7 @@ The school's M365 tenant has **Conditional Access** policies that block the devi
 - For **Dedicated Server Mode (Method B)**, make sure you're signing in with a **Global Admin** account. For **`/geyser edu token`**, any student or teacher account works.
 - The device code expires after about 15 minutes. If it times out, restart the server to get a new code.
 - Check that your tenant has an active Minecraft Education license.
-- If the device code flow is blocked by Conditional Access policies, use the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback (see [Method A Step 2](#step-2-obtain-a-server-token)).
+- If the device code flow is blocked by Conditional Access policies, use the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback (see [Method A Step 3](#step-3-obtain-a-server-token)).
 
 ### Education players have weird usernames like `+Mark7b91`
 

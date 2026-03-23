@@ -184,9 +184,9 @@ These establish the standard framework: software is licensed not sold, limited t
 
 ### Education-Specific Context
 
-The Education support FAQ explicitly states: "Can I use my Minecraft Education licenses to access a Minecraft Bedrock or Java server? Since each of these Minecraft editions use distinct licensing systems, it's not possible to login to a different edition with Minecraft Education licenses."
+The Education support FAQ states: "Can I use my Minecraft Education licenses to access a Minecraft Bedrock or Java server? Since each of these Minecraft editions use distinct licensing systems, it's not possible to login to a different edition with Minecraft Education licenses."
 
-This statement is descriptive (describing a technical limitation), not prescriptive (creating a legal prohibition). It says it's "not possible," not "not permitted." EduGeyser makes the technically impossible possible, but the FAQ doesn't prohibit it.
+This FAQ is about client licensing — whether an Education license can be used to log into a different edition's client (Bedrock or Java). It does not address server-side connectivity. EduGeyser does not change which client players use; Education Edition players continue using their Education Edition client with their Education license. EduGeyser translates on the server side, which is outside the scope of this FAQ entry.
 
 ---
 
@@ -286,7 +286,7 @@ The key difference: EduGeyser bridges an Education client (with M365/Entra ID au
 
 1. **Authentication:** Uses Microsoft's own MSAL library to obtain tokens. No credentials are intercepted. The token flow uses the same OAuth endpoints Microsoft designed for third-party applications. Method B uses the MESS API exactly as documented.
 
-2. **Protocol Translation:** Geyser (the upstream project) handles all Bedrock-to-Java protocol translation. EduGeyser adds only the Education-specific delta: 3 extra strings in the StartGamePacket serializer, a `signedToken` claim in the handshake JWT, and 6 packet serializers changed from illegal to ignored.
+2. **Protocol Translation:** Geyser (the upstream project) handles all Bedrock-to-Java protocol translation. EduGeyser adds only the Education-specific delta: 3 extra strings in the StartGamePacket serializer, a `signedToken` claim in the handshake JWT, and 7 packet serializers changed from illegal to ignored.
 
 3. **Server-Side Only:** EduGeyser modifies no client code. The Education client is unmodified. All translation happens on the server, which is the teacher's/school's infrastructure.
 
