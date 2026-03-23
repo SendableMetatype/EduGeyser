@@ -109,8 +109,14 @@ public class LoginEncryptionUtils {
             }
 
             // Handle Education Edition authentication and tenant extraction
-            if (isEducationClient && !handleEducationLogin(session, geyser, data, result, authPayload, jwt)) {
-                return;
+            if (isEducationClient) {
+                if (geyser.config().education().tenancyMode() == EducationTenancyMode.OFF) {
+                    session.disconnect("Education Edition is not enabled on this server.");
+                    return;
+                }
+                if (!handleEducationLogin(session, geyser, data, result, authPayload, jwt)) {
+                    return;
+                }
             }
 
             IdentityData extraData = result.identityClaims().extraData;
@@ -299,9 +305,9 @@ public class LoginEncryptionUtils {
                 "Your school (tenant: " + tenantInfo + ") is not configured on this server.\n\n" +
                 "This server has " + poolSize + " tenant(s) registered.\n" +
                 "Ask the server administrator to add your school's tenant to the server configuration.\n\n" +
-                "If you are the admin, add a server-token for this tenant in the\n" +
-                "education.server-tokens list in config.yml, or register the server\n" +
-                "in your school's Minecraft Education admin portal."
+                "If you are the admin, add a server token in edu_standalone.yml,\n" +
+                "use /geyser edu token, or register the server in your school's\n" +
+                "Minecraft Education admin portal."
             );
             return null;
         }

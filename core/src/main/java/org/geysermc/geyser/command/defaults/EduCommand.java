@@ -37,6 +37,7 @@ import org.incendo.cloud.CommandManager;
 import org.incendo.cloud.context.CommandContext;
 
 import java.time.Instant;
+import java.util.List;
 
 public class EduCommand extends GeyserCommand {
 
@@ -81,31 +82,35 @@ public class EduCommand extends GeyserCommand {
     private void executeStatus(CommandContext<GeyserCommandSource> context) {
         GeyserCommandSource source = context.sender();
         EducationAuthManager eduAuth = geyser.getEducationAuthManager();
+        EducationTenancyMode mode = geyser.config().education().tenancyMode();
 
         source.sendMessage(ChatColor.AQUA + "=== Education Edition Status ===");
 
         if (eduAuth == null || !eduAuth.isActive()) {
-            source.sendMessage(ChatColor.YELLOW + "Education system: " + ChatColor.RED + "INACTIVE");
-            source.sendMessage(ChatColor.GRAY + "Configure server-name in the education section of config.yml to enable.");
+            source.sendMessage(ChatColor.YELLOW + "Education system: " + ChatColor.RED + "NOT INITIALIZED");
+            source.sendMessage(ChatColor.GRAY + "Set tenancy-mode in the education section of config.yml to enable.");
             return;
         }
 
         source.sendMessage(ChatColor.YELLOW + "Education system: " + ChatColor.GREEN + "ACTIVE");
-        source.sendMessage(ChatColor.YELLOW + "Server ID: " + ChatColor.WHITE + eduAuth.getServerId());
-        source.sendMessage(ChatColor.YELLOW + "Server IP: " + ChatColor.WHITE + eduAuth.getServerIp());
+        source.sendMessage(ChatColor.YELLOW + "Tenancy mode: " + ChatColor.WHITE + mode);
 
-        long expires = eduAuth.getServerTokenExpires();
-        long now = Instant.now().getEpochSecond();
-        String expiryStr = eduAuth.formatExpiry(expires);
-        if (expires > now) {
-            long remaining = expires - now;
-            source.sendMessage(ChatColor.YELLOW + "Token expires: " + ChatColor.WHITE + expiryStr
-                    + ChatColor.GRAY + " (in " + remaining + "s)");
-        } else {
-            source.sendMessage(ChatColor.YELLOW + "Token expires: " + ChatColor.RED + "EXPIRED (" + expiryStr + ")");
+        // Official/hybrid: show MESS registration info
+        if (mode == EducationTenancyMode.OFFICIAL || mode == EducationTenancyMode.HYBRID) {
+            source.sendMessage(ChatColor.YELLOW + "Server ID: " + ChatColor.WHITE + eduAuth.getServerId());
+            source.sendMessage(ChatColor.YELLOW + "Server IP: " + ChatColor.WHITE + eduAuth.getServerIp());
+
+            long expires = eduAuth.getServerTokenExpires();
+            long now = Instant.now().getEpochSecond();
+            String expiryStr = eduAuth.formatExpiry(expires);
+            if (expires > now) {
+                source.sendMessage(ChatColor.YELLOW + "MESS token: " + ChatColor.WHITE + expiryStr);
+            } else {
+                source.sendMessage(ChatColor.YELLOW + "MESS token: " + ChatColor.RED + "EXPIRED (" + expiryStr + ")");
+            }
         }
 
-        // Count education players
+        // Education player count
         int eduCount = 0;
         int totalCount = 0;
         for (GeyserSession session : geyser.onlineConnections()) {
@@ -115,10 +120,42 @@ public class EduCommand extends GeyserCommand {
             }
         }
         source.sendMessage(ChatColor.YELLOW + "Education players: " + ChatColor.WHITE + eduCount + "/" + totalCount + " online");
-        source.sendMessage(ChatColor.YELLOW + "Tenancy mode: " + ChatColor.WHITE + geyser.config().education().tenancyMode());
-        source.sendMessage(ChatColor.YELLOW + "Verified joins: " + ChatColor.WHITE + eduAuth.getVerifiedJoins()
-                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Unverified: " + ChatColor.WHITE + eduAuth.getUnverifiedJoins()
-                + ChatColor.GRAY + " | " + ChatColor.YELLOW + "Rejected: " + ChatColor.WHITE + eduAuth.getRejectedJoins());
+
+        // Tenant table
+        List<EducationAuthManager.TenantStatusInfo> tenants = eduAuth.getTenantStatusList();
+        if (tenants.isEmpty()) {
+            source.sendMessage(ChatColor.YELLOW + "Tenants: " + ChatColor.GRAY + "none registered");
+        } else {
+            source.sendMessage(ChatColor.YELLOW + "Tenants (" + tenants.size() + "):");
+            for (EducationAuthManager.TenantStatusInfo info : tenants) {
+                String shortId = info.tenantId().length() > 8
+                        ? info.tenantId().substring(0, 8) + "..."
+                        : info.tenantId();
+                String statusColor = switch (info.status()) {
+                    case "VALID" -> ChatColor.GREEN;
+                    case "EXPIRING" -> ChatColor.GOLD;
+                    case "EXPIRED" -> ChatColor.RED;
+                    default -> ChatColor.GRAY;
+                };
+                String expiryDisplay = info.expiry() != Instant.EPOCH
+                        ? eduAuth.formatExpiry(info.expiry().getEpochSecond())
+                        : "unknown";
+                String line = ChatColor.WHITE + "  " + shortId
+                        + ChatColor.GRAY + " [" + info.source() + "] "
+                        + statusColor + info.status()
+                        + ChatColor.GRAY + " (expires: " + expiryDisplay + ")";
+                if (info.tokenCount() > 1) {
+                    line += ChatColor.GRAY + " [" + info.tokenCount() + " tokens]";
+                }
+                source.sendMessage(line);
+            }
+        }
+
+        // Device-code token count
+        int dcCount = eduAuth.getStandaloneTokenCount();
+        if (dcCount > 0) {
+            source.sendMessage(ChatColor.YELLOW + "Device-code tokens: " + ChatColor.WHITE + dcCount + " (auto-refreshing)");
+        }
     }
 
     private void executePlayers(CommandContext<GeyserCommandSource> context) {
@@ -157,7 +194,7 @@ public class EduCommand extends GeyserCommand {
         }
 
         if (!eduAuth.resetAndReauthenticate()) {
-            source.sendMessage(ChatColor.RED + "Education is not configured. Set server-name in the education config section.");
+            source.sendMessage(ChatColor.RED + "Education is not configured. Set server-name in edu_official.yml.");
             return;
         }
         source.sendMessage(ChatColor.YELLOW + "Resetting education session and re-authenticating...");

@@ -511,19 +511,21 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
         }
 
         // Initialize Education Edition auth manager and token pool
+        EducationTenancyMode tenancyMode = config.education().tenancyMode();
         this.educationAuthManager = new EducationAuthManager();
         this.educationAuthManager.setup(this);
-        EducationTenancyMode tenancyMode = config.education().tenancyMode();
-        if (tenancyMode != EducationTenancyMode.STANDALONE) {
-            this.educationAuthManager.initialize();
-        } else {
-            logger.debug("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
+        if (tenancyMode != EducationTenancyMode.OFF) {
+            if (tenancyMode != EducationTenancyMode.STANDALONE) {
+                this.educationAuthManager.initialize();
+            } else {
+                logger.debug("[EduTenancy] Standalone tenancy mode - skipping MESS registration");
+            }
+            if (tenancyMode != EducationTenancyMode.OFFICIAL) {
+                this.educationAuthManager.loadManualTokens();
+                this.educationAuthManager.loadDeviceCodeTokens();
+            }
+            logger.info(String.format("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount()));
         }
-        if (tenancyMode != EducationTenancyMode.OFFICIAL) {
-            this.educationAuthManager.loadConfigTokens();
-            this.educationAuthManager.loadStandaloneTokens();
-        }
-        logger.info(String.format("[EduTenancy] Tenancy mode: %s, registered tenants: %s", tenancyMode, educationAuthManager.getRegisteredTenantCount()));
 
         setupMetrics(config, logger);
 

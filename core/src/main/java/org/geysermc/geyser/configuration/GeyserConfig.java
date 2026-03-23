@@ -115,7 +115,7 @@ public interface GeyserConfig {
         return UUID.randomUUID();
     }
 
-    @Comment("Education Edition support. Leave server-name empty to disable.")
+    @Comment("Education Edition support. Set tenancy-mode to enable.")
     EducationConfig education();
 
     @Comment("If debug messages should be sent through console")
@@ -361,54 +361,14 @@ public interface GeyserConfig {
     @ConfigSerializable
     interface EducationConfig {
         @Comment("""
-                Dedicated server ID from the Education Edition admin portal.
-                If left empty and server-name is set, Geyser will automatically register a new server.
-                The server ID will be saved to edu_session.json after registration.""")
-        @DefaultString("")
-        String serverId();
-
-        @Comment("""
-                Public IP:port for server registration (e.g. "mc.example.com:19132").
-                If empty, Geyser will attempt to auto-detect your public IP.
-                It is recommended to set this manually, as auto-detection may fail behind NAT, proxies, or some hosting providers.
-                This must be reachable by Education Edition clients for them to connect.""")
-        @DefaultString("")
-        String serverIp();
-
-        @Comment("""
-                Display name for the server, visible in the Minecraft Education server list.
-                Set this to enable Education Edition support when no server-id is configured.
-                A new server will be automatically registered with this name on first run.""")
-        @DefaultString("")
-        String serverName();
-
-        @Comment("Maximum number of Education Edition players that can connect. Used for the server list display.")
-        @DefaultNumeric(40)
-        int maxPlayers();
-
-        @Comment("""
-                Tenancy mode:
-                "official" = Uses Microsoft's MESS registration. One registered token serves all tenants.
-                             The server-tokens list is ignored.
-                "hybrid" = Server is MESS-registered under one primary tenant. Additional tenants can
-                           connect using manually-provided tokens in server-tokens.
-                "standalone" = No MESS registration. All tokens come from server-tokens.
-                               Each token is parsed on startup to extract its tenant ID for routing.""")
+                Tenancy mode controls whether Education Edition support is enabled and how it operates.
+                "off" = Education support is disabled. Education clients are rejected. (default)
+                "official" = Uses Microsoft's MESS registration. Server appears in the Education server list.
+                             Configure server details in edu_official.yml.
+                "hybrid" = MESS-registered, with additional tenants supported via tokens in edu_standalone.yml.
+                "standalone" = No MESS registration. All tokens come from edu_standalone.yml.""")
         default EducationTenancyMode tenancyMode() {
-            return EducationTenancyMode.OFFICIAL;
-        }
-
-        @Comment("""
-                Additional server tokens for hybrid or standalone multi-tenancy mode.
-                Each token is a JWT obtained from a school's Minecraft Education admin portal.
-                On startup, each token is decoded to extract its tenant ID automatically.
-                When an edu client connects, their tenant ID is matched against these tokens.
-                Example with multiple tokens:
-                  server-tokens:
-                    - "eyJhbGciOi...first-school-token"
-                    - "eyJhbGciOi...second-school-token\"""")
-        default List<String> serverTokens() {
-            return Collections.emptyList();
+            return EducationTenancyMode.OFF;
         }
     }
 

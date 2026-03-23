@@ -41,14 +41,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.Reader;
-import java.io.Writer;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -112,8 +108,8 @@ public class EducationAuthManager {
      * 2 = optimal/healthy.
      */
     private static final int MESS_HEALTH_OPTIMAL = 2;
-    private static final String SESSION_FILE = "edu_tooling_session.json";
-    private static final String STANDALONE_TOKENS_FILE = "edu_standalone_tokens.json";
+    private static final String OFFICIAL_FILE = "edu_official.yml";
+    private static final String STANDALONE_FILE = "edu_standalone.yml";
     private static final String LOG_PREFIX = "[EduTooling] ";
     private static final int HTTP_TIMEOUT = 15000;
     private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 60;
@@ -167,14 +163,205 @@ public class EducationAuthManager {
 
     record NonceEntry(String sessionToken, long fetchedAt) {}
 
+    private @Nullable Path officialFilePath;
+    private @Nullable Path standaloneFilePath;
+
     /**
-     * Sets up core fields (geyser, logger, sessionFilePath) needed by all modes.
+     * Sets up core fields (geyser, logger, file paths) needed by all modes.
+     * Generates edu_official.yml and edu_standalone.yml if they don't exist.
      * Must be called before any other method. Does not start MESS registration.
      */
     public void setup(GeyserImpl geyser) {
         this.geyser = geyser;
         this.logger = geyser.getLogger();
-        this.sessionFilePath = geyser.configDirectory().resolve(SESSION_FILE);
+        this.officialFilePath = geyser.configDirectory().resolve(OFFICIAL_FILE);
+        this.standaloneFilePath = geyser.configDirectory().resolve(STANDALONE_FILE);
+        // Keep sessionFilePath pointing to the official file for session save/load
+        this.sessionFilePath = officialFilePath;
+
+        generateOfficialFile();
+        generateStandaloneFile();
+    }
+
+    /**
+     * Generates edu_official.yml with config fields at the top and session data below.
+     */
+    private void generateOfficialFile() {
+        if (Files.exists(officialFilePath)) {
+            return;
+        }
+        try {
+            Files.writeString(officialFilePath, """
+                    # ============================================================
+                    # EduGeyser Official Server Configuration
+                    # ============================================================
+                    # Configure these fields for official/hybrid tenancy mode.
+                    # This file is also used to store MESS session data (below the config section).
+
+                    # Display name for the server in Education Edition's server list.
+                    server-name: ""
+
+                    # Public IP:port for MESS registration (e.g. "mc.example.com:19132").
+                    # If empty, Geyser will attempt to auto-detect your public IP.
+                    # Recommended to set this manually, especially behind NAT or proxies.
+                    server-ip: ""
+
+                    # Maximum players shown in the Education Edition server list.
+                    max-players: 40
+
+                    # --- Session data (managed automatically, do not edit below this line) ---
+                    server-id: ""
+                    """);
+            logger.debug(LOG_PREFIX + "Generated " + OFFICIAL_FILE);
+        } catch (IOException e) {
+            logger.error(LOG_PREFIX + "Failed to generate " + OFFICIAL_FILE + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Generates edu_standalone.yml with token paste slots and device-code section.
+     */
+    private void generateStandaloneFile() {
+        if (Files.exists(standaloneFilePath)) {
+            return;
+        }
+        try {
+            Files.writeString(standaloneFilePath, """
+                    # ============================================================
+                    # EduGeyser Standalone Token Configuration
+                    # ============================================================
+                    # Paste server tokens from the EduGeyser Token Tool here.
+                    # Each token authorizes one school's tenant.
+                    tokens:
+                      - ""
+                      - ""
+                      - ""
+
+                    # --- Device-code tokens (managed automatically, do not edit below this line) ---
+                    device-code-tokens: []
+                    """);
+            logger.debug(LOG_PREFIX + "Generated " + STANDALONE_FILE);
+        } catch (IOException e) {
+            logger.error(LOG_PREFIX + "Failed to generate " + STANDALONE_FILE + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Reads config fields (server-name, server-ip, max-players, server-id) from edu_official.yml.
+     */
+    private void loadOfficialConfig() {
+        if (!Files.exists(officialFilePath)) {
+            return;
+        }
+        try {
+            var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
+                    .path(officialFilePath).build();
+            var node = loader.load();
+            this.serverName = node.node("server-name").getString("");
+            this.serverIp = node.node("server-ip").getString("");
+            this.serverId = node.node("server-id").getString("");
+            this.maxPlayers = node.node("max-players").getInt(40);
+        } catch (Exception e) {
+            logger.error(LOG_PREFIX + "Failed to load " + OFFICIAL_FILE + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Saves session data back to edu_official.yml, preserving config fields and comments.
+     * Reads current config values from file first, then rewrites the entire file.
+     */
+    private void saveOfficialSession() {
+        synchronized (sessionFileLock) {
+            if (officialFilePath == null) {
+                return;
+            }
+            try {
+                // Read current config values from file to preserve user edits
+                String cfgServerName = serverName != null ? serverName : "";
+                String cfgServerIp = serverIp != null ? serverIp : "";
+                int cfgMaxPlayers = maxPlayers;
+                if (Files.exists(officialFilePath)) {
+                    var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
+                            .path(officialFilePath).build();
+                    var node = loader.load();
+                    cfgServerName = node.node("server-name").getString("");
+                    cfgServerIp = node.node("server-ip").getString("");
+                    cfgMaxPlayers = node.node("max-players").getInt(40);
+                }
+
+                String sid = (serverId != null && !serverId.isEmpty()) ? serverId : "";
+                Files.writeString(officialFilePath,
+                    "# ============================================================\n" +
+                    "# EduGeyser Official Server Configuration\n" +
+                    "# ============================================================\n" +
+                    "# Configure these fields for official/hybrid tenancy mode.\n" +
+                    "# This file is also used to store MESS session data (below the config section).\n\n" +
+                    "# Display name for the server in Education Edition's server list.\n" +
+                    "server-name: \"" + escapeYaml(cfgServerName) + "\"\n\n" +
+                    "# Public IP:port for MESS registration (e.g. \"mc.example.com:19132\").\n" +
+                    "# If empty, Geyser will attempt to auto-detect your public IP.\n" +
+                    "# Recommended to set this manually, especially behind NAT or proxies.\n" +
+                    "server-ip: \"" + escapeYaml(cfgServerIp) + "\"\n\n" +
+                    "# Maximum players shown in the Education Edition server list.\n" +
+                    "max-players: " + cfgMaxPlayers + "\n\n" +
+                    "# --- Session data (managed automatically, do not edit below this line) ---\n" +
+                    "server-id: \"" + escapeYaml(sid) + "\"\n" +
+                    "refresh-token: " + yamlStringOrNull(refreshToken) + "\n" +
+                    "access-token: " + yamlStringOrNull(accessToken) + "\n" +
+                    "access-token-expires: " + accessTokenExpires + "\n" +
+                    "edu-refresh-token: " + yamlStringOrNull(eduRefreshToken) + "\n" +
+                    "edu-access-token: " + yamlStringOrNull(eduAccessToken) + "\n" +
+                    "edu-access-token-expires: " + eduAccessTokenExpires + "\n" +
+                    "server-token: " + yamlStringOrNull(serverToken) + "\n" +
+                    "server-token-jwt: " + yamlStringOrNull(serverTokenJwt) + "\n" +
+                    "server-token-expires: " + serverTokenExpires + "\n"
+                );
+            } catch (Exception e) {
+                logger.error(LOG_PREFIX + "Failed to save " + OFFICIAL_FILE + ": " + e.getMessage(), e);
+            }
+        }
+    }
+
+    private static String escapeYaml(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    private static String yamlStringOrNull(@Nullable String value) {
+        if (value == null) return "null";
+        return "\"" + escapeYaml(value) + "\"";
+    }
+
+    /**
+     * Loads session data from edu_official.yml (tokens, expiry, etc.).
+     */
+    private void loadOfficialSession() {
+        if (!Files.exists(officialFilePath)) {
+            return;
+        }
+        synchronized (sessionFileLock) {
+            try {
+                var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
+                        .path(officialFilePath).build();
+                var node = loader.load();
+                this.refreshToken = node.node("refresh-token").getString();
+                this.accessToken = node.node("access-token").getString();
+                this.accessTokenExpires = node.node("access-token-expires").getLong(0);
+                this.eduRefreshToken = node.node("edu-refresh-token").getString();
+                this.eduAccessToken = node.node("edu-access-token").getString();
+                this.eduAccessTokenExpires = node.node("edu-access-token-expires").getLong(0);
+                this.serverToken = node.node("server-token").getString();
+                this.serverTokenJwt = node.node("server-token-jwt").getString();
+                this.serverTokenExpires = node.node("server-token-expires").getLong(0);
+                String fileServerId = node.node("server-id").getString();
+                if ((serverId == null || serverId.isEmpty()) && fileServerId != null && !fileServerId.isEmpty()) {
+                    this.serverId = fileServerId;
+                }
+            } catch (Exception e) {
+                logger.error(LOG_PREFIX + "Failed to load session from " + OFFICIAL_FILE + ": " + e.getMessage(), e);
+            }
+        }
     }
 
     /**
@@ -183,15 +370,14 @@ public class EducationAuthManager {
      * {@link #setup(GeyserImpl)} must be called first.
      */
     public void initialize() {
-        this.serverId = geyser.config().education().serverId();
-        this.serverName = geyser.config().education().serverName();
-        this.maxPlayers = geyser.config().education().maxPlayers();
+        loadOfficialConfig();
+
 
         boolean hasServerId = serverId != null && !serverId.isEmpty();
         boolean hasServerName = serverName != null && !serverName.isEmpty();
 
         if (!hasServerId && !hasServerName) {
-            logger.debug(LOG_PREFIX + "No edu-server-id or edu-server-name configured. Education tooling auth manager inactive.");
+            logger.debug(LOG_PREFIX + "No server-id or server-name configured in " + OFFICIAL_FILE + ". Education tooling auth manager inactive.");
             return;
         }
 
@@ -205,9 +391,9 @@ public class EducationAuthManager {
     }
 
     private String resolveServerIp() {
-        String configIp = geyser.config().education().serverIp();
-        if (configIp != null && !configIp.isEmpty()) {
-            return configIp;
+        // serverIp is loaded from edu_official.yml in loadOfficialConfig()
+        if (serverIp != null && !serverIp.isEmpty()) {
+            return serverIp;
         }
 
         int port = geyser.config().bedrock().port();
@@ -223,7 +409,7 @@ public class EducationAuthManager {
         }
         String result = address + ":" + port;
         logger.warning(LOG_PREFIX + "Could not auto-detect public IP. Using bind address: " + result);
-        logger.warning(LOG_PREFIX + "Set 'edu-server-ip' in config.yml to your public IP:port for external access.");
+        logger.warning(LOG_PREFIX + "Set 'server-ip' in " + OFFICIAL_FILE + " to your public IP:port for external access.");
         return result;
     }
 
@@ -231,7 +417,7 @@ public class EducationAuthManager {
 
     private void runAuthFlow() {
         try {
-            loadSession();
+            loadOfficialSession();
             restoreOrAuthenticate();
         } catch (InterruptedException e) {
             // Re-authentication was initiated asynchronously — not a failure
@@ -264,7 +450,7 @@ public class EducationAuthManager {
             // Configure server via tooling API (PascalCase, api-version 2.0)
             tryEditServerInfo();
 
-            saveSession();
+            saveOfficialSession();
 
             logger.info(LOG_PREFIX + "Server hosted at " + serverIp);
             logger.info(LOG_PREFIX + "Server is fully configured and broadcasted.");
@@ -397,7 +583,10 @@ public class EducationAuthManager {
             }
         }
 
-        saveSession();
+        // Only save session data if education was actually initialized
+        if (geyser != null && geyser.config().education().tenancyMode() != EducationTenancyMode.OFF) {
+            saveOfficialSession();
+        }
     }
 
     // ---- Device Code Flow (OAuth v2.0 with scope parameter) ----
@@ -594,7 +783,7 @@ public class EducationAuthManager {
                         ? response.get("refresh_token").getAsString() : this.refreshToken;
                 this.accessTokenExpires = parseTokenExpiry(response);
                 logger.debug(LOG_PREFIX + "Tooling token refreshed, expires %s.", formatExpiry(accessTokenExpires));
-                saveSession();
+                saveOfficialSession();
                 return true;
             }
             return false;
@@ -648,7 +837,7 @@ public class EducationAuthManager {
                         ? response.get("refresh_token").getAsString() : this.eduRefreshToken;
                 this.eduAccessTokenExpires = parseTokenExpiry(response);
                 logger.debug(LOG_PREFIX + "Edu client token refreshed, expires %s.", formatExpiry(eduAccessTokenExpires));
-                saveSession();
+                saveOfficialSession();
                 return true;
             }
             return false;
@@ -735,7 +924,7 @@ public class EducationAuthManager {
 
     private void fetchServerToken() throws IOException {
         if (serverId == null || serverId.isEmpty()) {
-            throw new IOException("Cannot fetch server token: no serverId available. Delete " + SESSION_FILE + " and restart to re-register.");
+            throw new IOException("Cannot fetch server token: no serverId available. Delete " + OFFICIAL_FILE + " and restart to re-register.");
         }
         String url = MESS_BASE + "/server/fetch_token?serverId="
                 + URLEncoder.encode(serverId, StandardCharsets.UTF_8);
@@ -845,7 +1034,7 @@ public class EducationAuthManager {
                     return;
                 }
                 fetchServerToken();
-                saveSession();
+                saveOfficialSession();
             } catch (Exception e) {
                 logger.error(LOG_PREFIX + "Scheduled token refresh error: " + e.getMessage(), e);
             }
@@ -854,66 +1043,9 @@ public class EducationAuthManager {
 
     // ---- Session Persistence ----
 
-    private void loadSession() {
-        synchronized (sessionFileLock) {
-            if (!Files.exists(sessionFilePath)) {
-                return;
-            }
-            try (Reader reader = new FileReader(sessionFilePath.toFile())) {
-                JsonObject obj = JsonParser.parseReader(reader).getAsJsonObject();
-                this.refreshToken = getStringOrNull(obj, "refresh_token");
-                this.accessToken = getStringOrNull(obj, "access_token");
-                this.accessTokenExpires = obj.has("access_token_expires") ? obj.get("access_token_expires").getAsLong() : 0;
-                this.eduRefreshToken = getStringOrNull(obj, "edu_refresh_token");
-                this.eduAccessToken = getStringOrNull(obj, "edu_access_token");
-                this.eduAccessTokenExpires = obj.has("edu_access_token_expires") ? obj.get("edu_access_token_expires").getAsLong() : 0;
-                this.serverToken = getStringOrNull(obj, "server_token");
-                this.serverTokenJwt = getStringOrNull(obj, "server_token_jwt");
-                this.serverTokenExpires = obj.has("server_token_expires") ? obj.get("server_token_expires").getAsLong() : 0;
-                if ((serverId == null || serverId.isEmpty()) && obj.has("server_id")) {
-                    this.serverId = getStringOrNull(obj, "server_id");
-                }
-            } catch (Exception e) {
-                logger.error(LOG_PREFIX + "Failed to load session file: " + e.getMessage(), e);
-            }
-        }
-    }
-
-    private void saveSession() {
-        synchronized (sessionFileLock) {
-            if (sessionFilePath == null) {
-                return;
-            }
-            try {
-                JsonObject obj = new JsonObject();
-                if (serverId != null && !serverId.isEmpty()) {
-                    obj.addProperty("server_id", serverId);
-                }
-                obj.addProperty("refresh_token", refreshToken);
-                obj.addProperty("access_token", accessToken);
-                obj.addProperty("access_token_expires", accessTokenExpires);
-                obj.addProperty("edu_refresh_token", eduRefreshToken);
-                obj.addProperty("edu_access_token", eduAccessToken);
-                obj.addProperty("edu_access_token_expires", eduAccessTokenExpires);
-                obj.addProperty("server_token", serverToken);
-                obj.addProperty("server_token_jwt", serverTokenJwt);
-                obj.addProperty("server_token_expires", serverTokenExpires);
-                try (Writer writer = new FileWriter(sessionFilePath.toFile())) {
-                    GeyserImpl.GSON.toJson(obj, writer);
-                }
-            } catch (Exception e) {
-                logger.error(LOG_PREFIX + "Failed to save session file: " + e.getMessage(), e);
-            }
-        }
-    }
-
     private void deleteSession() {
         synchronized (sessionFileLock) {
-            try {
-                Files.deleteIfExists(sessionFilePath);
-            } catch (IOException e) {
-                logger.warning(LOG_PREFIX + "Failed to delete session file: " + e.getMessage());
-            }
+            // Clear session data from edu_official.yml but preserve config fields
             this.refreshToken = null;
             this.accessToken = null;
             this.accessTokenExpires = 0;
@@ -923,6 +1055,7 @@ public class EducationAuthManager {
             this.serverToken = null;
             this.serverTokenJwt = null;
             this.serverTokenExpires = 0;
+            saveOfficialSession();
         }
     }
 
@@ -1239,26 +1372,41 @@ public class EducationAuthManager {
     }
 
     /**
-     * Load server tokens from config and register them in the tenant pool.
+     * Load manual server tokens from the tokens: section of edu_standalone.yml
+     * and register them in the tenant pool as config-trust tenants.
      * Called during initialization for hybrid and standalone tenancy modes.
      */
-    public void loadConfigTokens() {
-        List<String> configTokens = geyser.config().education().serverTokens();
-        if (configTokens != null && !configTokens.isEmpty()) {
-            logger.info(String.format("[EduTenancy] Loading %s server token(s) from config", configTokens.size()));
-            for (String token : configTokens) {
+    public void loadManualTokens() {
+        if (standaloneFilePath == null || !Files.exists(standaloneFilePath)) {
+            return;
+        }
+        try {
+            var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
+                    .path(standaloneFilePath).build();
+            var node = loader.load();
+            var tokensList = node.node("tokens").getList(String.class);
+            if (tokensList == null || tokensList.isEmpty()) {
+                if (geyser.config().education().tenancyMode() == EducationTenancyMode.STANDALONE) {
+                    logger.warning("[EduTenancy] Standalone mode but no tokens in " + STANDALONE_FILE + ". Use /geyser edu token or paste tokens from the Token Tool.");
+                }
+                return;
+            }
+
+            int loaded = 0;
+            for (String token : tokensList) {
                 if (token != null && !token.isBlank()) {
                     String trimmed = token.trim();
                     String tenantId = extractTenantIdFromServerToken(trimmed);
                     if (tenantId != null) {
                         tenantTokenPool.computeIfAbsent(tenantId, k -> new CopyOnWriteArrayList<>()).add(trimmed);
                         configTrustTenants.add(tenantId);
-                        logger.info(String.format("[EduTenancy] Registered token for tenant %s (source: config server-tokens)", tenantId));
+                        logger.info(String.format("[EduTenancy] Registered token for tenant %s (source: %s)", tenantId, STANDALONE_FILE));
+                        loaded++;
 
                         // Warn if token expires within 3 days
                         Instant expiry = extractTokenExpiry(trimmed);
                         if (expiry == Instant.EPOCH) {
-                            logger.warning(String.format("[EduTenancy] Could not parse expiry timestamp for tenant %s token. Expiry warnings unavailable.", tenantId));
+                            logger.warning(String.format("[EduTenancy] Could not parse expiry timestamp for tenant %s token.", tenantId));
                         } else {
                             long daysLeft = Duration.between(Instant.now(), expiry).toDays();
                             if (daysLeft < 0) {
@@ -1268,9 +1416,13 @@ public class EducationAuthManager {
                             }
                         }
                     } else {
-                        logger.warning("[EduTenancy] Could not extract tenant ID from config token. Token will not be usable for routing.");
+                        logger.warning("[EduTenancy] Could not extract tenant ID from token in " + STANDALONE_FILE + ". Token will not be usable for routing.");
                     }
                 }
+            }
+
+            if (loaded > 0) {
+                logger.info(String.format("[EduTenancy] Loaded %d manual token(s) from %s", loaded, STANDALONE_FILE));
             }
 
             // Warn about duplicate tenants
@@ -1280,8 +1432,8 @@ public class EducationAuthManager {
                         entry.getValue().size(), entry.getKey()));
                 }
             }
-        } else if (geyser.config().education().tenancyMode() == EducationTenancyMode.STANDALONE) {
-            logger.warning("[EduTenancy] Standalone mode but no server-tokens configured. No tenants will be able to connect.");
+        } catch (Exception e) {
+            logger.error("[EduTenancy] Failed to load tokens from " + STANDALONE_FILE + ": " + e.getMessage(), e);
         }
     }
 
@@ -1452,6 +1604,61 @@ public class EducationAuthManager {
     public int getRegisteredTenantCount() {
         return tenantTokenPool.size();
     }
+
+    /**
+     * Returns a snapshot of all tenants in the token pool with their status info.
+     * Each entry contains: tenant ID, source (MESS/config/device-code), token status, expiry.
+     */
+    public java.util.List<TenantStatusInfo> getTenantStatusList() {
+        java.util.List<TenantStatusInfo> result = new java.util.ArrayList<>();
+        // Collect device-code tenant IDs for source detection
+        java.util.Set<String> deviceCodeTenants = new java.util.HashSet<>();
+        for (StandaloneTokenEntry entry : standaloneTokens) {
+            deviceCodeTenants.add(entry.tenantId);
+        }
+
+        for (Map.Entry<String, List<String>> entry : tenantTokenPool.entrySet()) {
+            String tenantId = entry.getKey();
+            List<String> tokens = entry.getValue();
+            String newestToken = selectNewestToken(tokens);
+
+            // Determine source
+            String source;
+            if (deviceCodeTenants.contains(tenantId)) {
+                source = "device-code";
+            } else if (configTrustTenants.contains(tenantId)) {
+                source = "config";
+            } else {
+                source = "MESS";
+            }
+
+            // Determine expiry and status
+            Instant expiry = newestToken != null ? extractTokenExpiry(newestToken) : Instant.EPOCH;
+            String status;
+            if (newestToken == null) {
+                status = "NO TOKEN";
+            } else if (expiry == Instant.EPOCH) {
+                status = "UNKNOWN";
+            } else {
+                long daysLeft = java.time.Duration.between(Instant.now(), expiry).toDays();
+                if (daysLeft < 0) {
+                    status = "EXPIRED";
+                } else if (daysLeft < 3) {
+                    status = "EXPIRING";
+                } else {
+                    status = "VALID";
+                }
+            }
+
+            result.add(new TenantStatusInfo(tenantId, source, status, expiry, tokens.size()));
+        }
+        return result;
+    }
+
+    /**
+     * Snapshot of a tenant's status for the /geyser edu status command.
+     */
+    public record TenantStatusInfo(String tenantId, String source, String status, Instant expiry, int tokenCount) {}
 
     // ---- Standalone Device Code Token Acquisition ----
 
@@ -1651,52 +1858,48 @@ public class EducationAuthManager {
     }
 
     /**
-     * Load standalone tokens from the persistence file on startup.
+     * Load device-code tokens from the device-code-tokens section of edu_standalone.yml.
      * Re-registers them in the tenant pool and schedules refresh.
      */
-    public void loadStandaloneTokens() {
-        if (sessionFilePath == null) {
-            return;
-        }
-        Path standaloneFile = sessionFilePath.getParent().resolve(STANDALONE_TOKENS_FILE);
-        if (!Files.exists(standaloneFile)) {
+    public void loadDeviceCodeTokens() {
+        if (standaloneFilePath == null || !Files.exists(standaloneFilePath)) {
             return;
         }
 
-        synchronized (sessionFileLock) {
-            try (Reader reader = new FileReader(standaloneFile.toFile())) {
-                JsonArray arr = JsonParser.parseReader(reader).getAsJsonArray();
-                for (JsonElement elem : arr) {
-                    JsonObject obj = elem.getAsJsonObject();
-                    String tenantId = getStringOrNull(obj, "tenant_id");
-                    String refreshToken = getStringOrNull(obj, "refresh_token");
-                    String serverToken = getStringOrNull(obj, "server_token");
+        try {
+            var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
+                    .path(standaloneFilePath).build();
+            var node = loader.load();
+            var dcTokens = node.node("device-code-tokens").childrenList();
 
-                    if (tenantId != null && serverToken != null) {
-                        StandaloneTokenEntry entry = new StandaloneTokenEntry(tenantId, refreshToken, serverToken);
-                        standaloneTokens.add(entry);
+            for (var child : dcTokens) {
+                String tenantId = child.node("tenant-id").getString();
+                String refToken = child.node("refresh-token").getString();
+                String srvToken = child.node("server-token").getString();
 
-                        // Register in pool as config-trust
-                        tenantTokenPool.computeIfAbsent(tenantId, k -> new CopyOnWriteArrayList<>()).add(serverToken);
-                        configTrustTenants.add(tenantId);
+                if (tenantId != null && srvToken != null) {
+                    StandaloneTokenEntry entry = new StandaloneTokenEntry(tenantId, refToken, srvToken);
+                    standaloneTokens.add(entry);
 
-                        logger.info(String.format("[EduToken] Loaded standalone token for tenant %s", tenantId));
-                    }
+                    // Register in pool as config-trust
+                    tenantTokenPool.computeIfAbsent(tenantId, k -> new CopyOnWriteArrayList<>()).add(srvToken);
+                    configTrustTenants.add(tenantId);
+
+                    logger.info(String.format("[EduToken] Loaded device-code token for tenant %s", tenantId));
                 }
-            } catch (Exception e) {
-                logger.error("[EduToken] Failed to load standalone tokens: " + e.getMessage(), e);
             }
+        } catch (Exception e) {
+            logger.error("[EduToken] Failed to load device-code tokens from " + STANDALONE_FILE + ": " + e.getMessage(), e);
         }
 
         // Schedule periodic refresh (every 30 minutes, same as MESS tokens)
         if (!standaloneTokens.isEmpty()) {
             scheduleStandaloneRefresh();
 
-            // Re-authenticate any entries with missing refresh tokens (e.g., server
-            // restarted after a refresh failure but before re-auth completed)
+            // Re-authenticate any entries with missing refresh tokens
             for (StandaloneTokenEntry entry : standaloneTokens) {
                 if (entry.refreshToken == null) {
-                    logger.warning(String.format("[EduToken] Standalone token for tenant %s has no refresh token. Starting re-authentication...", entry.tenantId));
+                    logger.warning(String.format("[EduToken] Device-code token for tenant %s has no refresh token. Starting re-authentication...", entry.tenantId));
                     reAuthenticateStandaloneToken(entry);
                 }
             }
@@ -1715,31 +1918,60 @@ public class EducationAuthManager {
     }
 
     /**
-     * Persist standalone tokens to the separate JSON file.
+     * Persist device-code tokens to edu_standalone.yml, preserving manual tokens and comments.
+     * Reads the current manual tokens from file, then rewrites the entire file.
      */
     private void saveStandaloneTokens() {
-        if (sessionFilePath == null) {
+        if (standaloneFilePath == null) {
             return;
         }
-        Path standaloneFile = sessionFilePath.getParent().resolve(STANDALONE_TOKENS_FILE);
 
         synchronized (sessionFileLock) {
             try {
-                JsonArray arr = new JsonArray();
-                for (StandaloneTokenEntry entry : standaloneTokens) {
-                    JsonObject obj = new JsonObject();
-                    obj.addProperty("tenant_id", entry.tenantId);
-                    if (entry.refreshToken != null) {
-                        obj.addProperty("refresh_token", entry.refreshToken);
+                // Read current manual tokens from file to preserve user edits
+                java.util.List<String> manualTokens = new java.util.ArrayList<>();
+                if (Files.exists(standaloneFilePath)) {
+                    var loader = org.spongepowered.configurate.yaml.YamlConfigurationLoader.builder()
+                            .path(standaloneFilePath).build();
+                    var node = loader.load();
+                    var tokensList = node.node("tokens").getList(String.class);
+                    if (tokensList != null) {
+                        manualTokens.addAll(tokensList);
                     }
-                    obj.addProperty("server_token", entry.serverToken);
-                    arr.add(obj);
                 }
-                try (Writer writer = new FileWriter(standaloneFile.toFile())) {
-                    GeyserImpl.GSON.toJson(arr, writer);
+
+                // Ensure at least 3 paste slots
+                while (manualTokens.size() < 3) {
+                    manualTokens.add("");
                 }
+
+                StringBuilder sb = new StringBuilder();
+                sb.append("# ============================================================\n");
+                sb.append("# EduGeyser Standalone Token Configuration\n");
+                sb.append("# ============================================================\n");
+                sb.append("# Paste server tokens from the EduGeyser Token Tool here.\n");
+                sb.append("# Each token authorizes one school's tenant.\n");
+                sb.append("tokens:\n");
+                for (String token : manualTokens) {
+                    sb.append("  - \"").append(escapeYaml(token)).append("\"\n");
+                }
+                sb.append("\n# --- Device-code tokens (managed automatically, do not edit below this line) ---\n");
+                if (standaloneTokens.isEmpty()) {
+                    sb.append("device-code-tokens: []\n");
+                } else {
+                    sb.append("device-code-tokens:\n");
+                    for (StandaloneTokenEntry entry : standaloneTokens) {
+                        sb.append("  - tenant-id: \"").append(escapeYaml(entry.tenantId)).append("\"\n");
+                        if (entry.refreshToken != null) {
+                            sb.append("    refresh-token: \"").append(escapeYaml(entry.refreshToken)).append("\"\n");
+                        }
+                        sb.append("    server-token: \"").append(escapeYaml(entry.serverToken)).append("\"\n");
+                    }
+                }
+
+                Files.writeString(standaloneFilePath, sb.toString());
             } catch (Exception e) {
-                logger.error("[EduToken] Failed to save standalone tokens: " + e.getMessage(), e);
+                logger.error("[EduToken] Failed to save device-code tokens to " + STANDALONE_FILE + ": " + e.getMessage(), e);
             }
         }
     }
