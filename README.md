@@ -4,13 +4,16 @@ A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Edu
 
 ## Features
 
-- **Education client authentication** - EduTokenChain JWT verification against MESS (Minecraft Education Server Services) public keys
+- **Opt-in education support** - Disabled by default (`tenancy-mode: off`), no impact on existing Geyser installations
+- **Education client authentication** - Nonce-based verification via MESS (Minecraft Education Server Services) for official/hybrid modes
 - **MESS server registration** - OAuth2 device code flow for automated server setup with Microsoft's education infrastructure
-- **Multi-tenancy** - Multiple schools (M365 tenants) can share a single server with per-tenant token routing
+- **Multi-tenancy** - Multiple schools (M365 tenants) can share a single server with per-tenant token routing and newest-token selection
+- **Standalone token acquisition** - `/geyser edu token` command for in-game device code flow with auto-refresh
+- **Separate config files** - `edu_official.yml` and `edu_standalone.yml` with commented templates, keeping the main config clean
 - **Education codec** - Custom StartGamePacket serializer and education-specific packet handling (chemistry tables, NPCs, Code Builder)
 - **Education session management** - Gamerules, experiments, EducationSettingsPacket, and edu-specific block break handling
 - **Floodgate integration** - Deterministic UUID generation and username formatting for education players via [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate)
-- **Operator tools** - `/geyser edu` command for monitoring auth state, connected education players, and re-authentication
+- **Operator tools** - `/geyser edu` command with status/players/token/reset subcommands and per-tenant health monitoring
 
 ## Downloads
 
