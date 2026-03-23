@@ -1,6 +1,10 @@
 # EduGeyser: Complete Technical Reference
 
-> **⚠ Note:** This document was written during initial development and has not been updated to reflect the current EduGeyser implementation. Details about specific code structure, class names, config fields, and authentication flows may be outdated. Use this as a general information source about the Education Edition protocol and MESS API, not as a guide to the current codebase. For setup instructions, see the [Setup Guide](SETUP-GUIDE.md).
+## ⚠ Implementation details in this document are outdated
+
+This document was written during initial development and has not been updated to reflect the current EduGeyser implementation. Details about specific code structure, class names, config fields, and authentication flows may be outdated. Use this as a general information source about the Education Edition protocol and MESS API, not as a guide to the current codebase. For setup instructions, see the [Setup Guide](SETUP-GUIDE.md).
+
+---
 
 ## Connecting Minecraft Education Edition to Java Servers via Geyser
 
