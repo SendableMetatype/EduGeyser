@@ -401,7 +401,6 @@ public class GeyserImpl implements GeyserApi, EventRegistrar {
                 }
             }
 
-
             if (platformType() != PlatformType.VIAPROXY) {
                 boolean floodgatePresent = bootstrap.testFloodgatePluginPresent();
                 if (config.java().authType() == AuthType.FLOODGATE && !floodgatePresent) {
