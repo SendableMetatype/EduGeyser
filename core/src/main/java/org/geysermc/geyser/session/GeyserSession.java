@@ -86,7 +86,6 @@ import org.cloudburstmc.protocol.bedrock.packet.CameraPresetsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.CreativeContentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.DimensionDataPacket;
-import org.cloudburstmc.protocol.bedrock.packet.EducationSettingsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.EmoteListPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GameRulesChangedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ItemComponentPacket;
@@ -969,12 +968,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         // We disable the locator bar until we are certain that the server wants us to enable it
         // See WaypointCache for details
         gamerulePacket.getGameRules().add(new GameRuleData<>("locatorBar", false));
-        // Education Edition gamerules
-        if (educationClient) {
-            gamerulePacket.getGameRules().add(new GameRuleData<>("allowdestructiveobjects", true));
-            gamerulePacket.getGameRules().add(new GameRuleData<>("allowmobs", true));
-            gamerulePacket.getGameRules().add(new GameRuleData<>("globalmute", false));
-        }
         upstream.sendPacket(gamerulePacket);
     }
 
@@ -1851,15 +1844,11 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setScenarioId("");
         startGamePacket.setOwnerId("");
 
-        // Education gamerules embedded in StartGamePacket (part of LevelSettings)
+        // Disable Code Builder for education clients — it's unsupported on Java servers
+        // and would cause an illegal packet disconnect if the client opens it.
         if (educationClient) {
             startGamePacket.getGamerules().add(new GameRuleData<>("codebuilder", false));
-            startGamePacket.getGamerules().add(new GameRuleData<>("allowdestructiveobjects", true));
-            startGamePacket.getGamerules().add(new GameRuleData<>("allowmobs", true));
-            startGamePacket.getGamerules().add(new GameRuleData<>("globalmute", false));
         }
-
-        geyser.getLogger().debug("Sending StartGamePacket (vanillaVersion=%s)", startGamePacket.getVanillaVersion());
 
         // For Education clients, set the education codec permanently for this session.
         // It only differs in StartGamePacket serialization (appends 3 extra edu strings);
@@ -1874,21 +1863,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         }
         upstream.sendPacket(startGamePacket);
 
-        // Send EducationSettingsPacket right after StartGamePacket for Education clients
-        if (educationClient) {
-            EducationSettingsPacket eduSettings = new EducationSettingsPacket();
-            eduSettings.setCodeBuilderUri("");
-            eduSettings.setCodeBuilderTitle("");
-            eduSettings.setCanResizeCodeBuilder(false);
-            eduSettings.setDisableLegacyTitle(false);
-            eduSettings.setPostProcessFilter("");
-            eduSettings.setScreenshotBorderPath("");
-            eduSettings.setEntityCapabilities(OptionalBoolean.of(false));
-            eduSettings.setOverrideUri(Optional.empty());
-            eduSettings.setQuizAttached(false);
-            eduSettings.setExternalLinkSettings(OptionalBoolean.empty());
-            upstream.sendPacket(eduSettings);
-        }
     }
 
     /**
@@ -1980,10 +1954,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.getExperiments().add(new ExperimentData("upcoming_creator_features", true));
         // Needed for certain molang queries used in blocks and items
         startGamePacket.getExperiments().add(new ExperimentData("experimental_molang_features", true));
-        if (educationClient) {
-            startGamePacket.getExperiments().add(new ExperimentData("chemistry", true));
-            startGamePacket.getExperiments().add(new ExperimentData("gametest", true));
-        }
     }
 
     private void syncEntityProperties() {

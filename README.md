@@ -10,8 +10,7 @@ A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Edu
 - **Multi-tenancy** - Multiple schools (M365 tenants) can share a single server with per-tenant token routing and newest-token selection
 - **Standalone token acquisition** - `/geyser edu token` command for in-game device code flow with auto-refresh
 - **Separate config files** - `edu_official.yml` and `edu_standalone.yml` with commented templates, keeping the main config clean
-- **Education codec** - Custom StartGamePacket serializer and education-specific packet handling (chemistry tables, NPCs, Code Builder)
-- **Education session management** - Gamerules, experiments, EducationSettingsPacket, and edu-specific block break handling
+- **Education codec** - Custom StartGamePacket serializer appending the 3 education-specific fields required for Education Edition clients
 - **Floodgate integration** - Deterministic UUID generation and username formatting for education players via [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate)
 - **Operator tools** - `/geyser edu` command with status/players/token/reset subcommands and per-tenant health monitoring
 

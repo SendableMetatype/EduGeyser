@@ -25,69 +25,30 @@
 
 package org.geysermc.geyser.network;
 
-import io.netty.buffer.ByteBuf;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
-import org.cloudburstmc.protocol.bedrock.codec.BedrockCodecHelper;
-import org.cloudburstmc.protocol.bedrock.codec.BedrockPacketSerializer;
-import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
-import org.cloudburstmc.protocol.bedrock.packet.CodeBuilderSourcePacket;
-import org.cloudburstmc.protocol.bedrock.packet.CreatePhotoPacket;
-import org.cloudburstmc.protocol.bedrock.packet.GameTestRequestPacket;
-import org.cloudburstmc.protocol.bedrock.packet.LabTablePacket;
-import org.cloudburstmc.protocol.bedrock.packet.NpcRequestPacket;
-import org.cloudburstmc.protocol.bedrock.packet.PhotoInfoRequestPacket;
-import org.cloudburstmc.protocol.bedrock.packet.PhotoTransferPacket;
 import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 
 /**
  * Produces an education-aware codec from the base processed codec.
- * Re-enables education-specific packets (chemistry, NPCs, photos, Code Builder)
- * that are marked ILLEGAL in the base codec, using a no-op serializer
- * rather than disconnecting the client.
+ * Swaps the StartGamePacket serializer to append the 3 education-specific
+ * string fields (eduSharedUri) required for Education Edition clients to
+ * load the world.
  */
 public final class EducationCodecProcessor {
-
-    /**
-     * No-op serializer that silently ignores packets during deserialization.
-     * Used for education packets that Geyser has no translators for.
-     */
-    @SuppressWarnings("rawtypes")
-    private static final BedrockPacketSerializer IGNORED_SERIALIZER = new BedrockPacketSerializer<>() {
-        @Override
-        public void serialize(ByteBuf buffer, BedrockCodecHelper helper, BedrockPacket packet) {
-        }
-
-        @Override
-        public void deserialize(ByteBuf buffer, BedrockCodecHelper helper, BedrockPacket packet) {
-        }
-    };
 
     private EducationCodecProcessor() {
     }
 
     /**
-     * Wraps the given base codec with education-specific overrides.
-     * The base codec has education packets marked as ILLEGAL (disconnects client).
-     * This method overrides them to IGNORED (no-op deserialization) so education
-     * clients can send these packets without being disconnected.
+     * Wraps the given base codec with the education StartGamePacket serializer.
      *
      * @param codec the base processed codec (from {@link CodecProcessor#processCodec})
-     * @return a new codec with education packets re-enabled
+     * @return a new codec with the education StartGamePacket serializer
      */
     @SuppressWarnings("unchecked")
     public static BedrockCodec educationCodec(BedrockCodec codec) {
         return codec.toBuilder()
             .updateSerializer(StartGamePacket.class, EducationStartGameSerializer.INSTANCE)
-            // Re-enable education packets that are ILLEGAL in the base codec.
-            // Education clients legitimately send these for chemistry, NPCs, photos, and Code Builder.
-            // IGNORED allows deserialization without processing (Geyser has no translators for these).
-            .updateSerializer(PhotoTransferPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(LabTablePacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(CodeBuilderSourcePacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(CreatePhotoPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(NpcRequestPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(PhotoInfoRequestPacket.class, IGNORED_SERIALIZER)
-            .updateSerializer(GameTestRequestPacket.class, IGNORED_SERIALIZER)
             .build();
     }
 }

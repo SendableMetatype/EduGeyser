@@ -252,8 +252,7 @@ class CodecProcessor {
         }
 
         BedrockCodec.Builder codecBuilder = codec.toBuilder()
-            // Illegal unused serverbound packets for education features.
-            // These are re-enabled in EducationCodecProcessor for education sessions only.
+            // Illegal unused serverbound EDU packets
             .updateSerializer(PhotoTransferPacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(LabTablePacket.class, ILLEGAL_SERIALIZER)
             .updateSerializer(CodeBuilderSourcePacket.class, ILLEGAL_SERIALIZER)

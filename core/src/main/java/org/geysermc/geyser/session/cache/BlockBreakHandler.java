@@ -84,14 +84,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class BlockBreakHandler {
 
-    /**
-     * Minimum break progress at which an Education Edition STOP_BREAK is treated as
-     * a completed block break. Edu clients send STOP_BREAK instead of BLOCK_PREDICT_DESTROY
-     * when a block finishes breaking. This threshold is a heuristic, currently unused
-     * since server-authoritative block breaking handles edu clients correctly without it.
-     */
-    private static final float EDU_STOP_BREAK_THRESHOLD = 0.65F;
-
     protected final GeyserSession session;
 
     /**
@@ -305,22 +297,6 @@ public class BlockBreakHandler {
                         continue;
                     }
 
-                    // Education Edition sends STOP_BREAK instead of BLOCK_PREDICT_DESTROY
-                    // when a block finishes breaking. If we have an active break at this
-                    // position with sufficient progress, treat it as a completed break.
-                    if (actionData.getAction() == PlayerActionType.STOP_BREAK
-                            && session.isEducationClient()
-                            && currentBlockPos != null
-                            && currentBlockState != null
-                            && currentBlockFace != null
-                            && currentProgress >= EDU_STOP_BREAK_THRESHOLD) {
-                        Vector3i minedPos = currentBlockPos;
-                        destroyBlock(currentBlockState, currentBlockPos, currentBlockFace, false);
-                        // Prevent the subsequent CONTINUE_BREAK (same packet) from
-                        // starting a new break on the block behind
-                        this.lastMinedPosition = minedPos;
-                        continue;
-                    }
 
                     handleAbortBreaking(position);
                 }
