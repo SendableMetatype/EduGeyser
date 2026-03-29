@@ -32,6 +32,8 @@ import com.google.gson.JsonParser;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
+import org.geysermc.geyser.ping.GeyserPingInfo;
+import org.geysermc.geyser.ping.IGeyserPingPassthrough;
 import org.geysermc.geyser.session.GeyserSession;
 
 import java.util.Comparator;
@@ -1006,8 +1008,8 @@ public class EducationAuthManager {
 
     private void sendServerUpdate() {
         try {
-            int eduPlayerCount = countEducationPlayers();
-            String json = "{\"playerCount\":" + eduPlayerCount
+            int playerCount = getPlayerCount();
+            String json = "{\"playerCount\":" + playerCount
                     + ",\"maxPlayers\":" + maxPlayers
                     + ",\"health\":" + MESS_HEALTH_OPTIMAL + "}";
             postJsonWithAuth(MESS_BASE + "/server/update", serverToken, json);
@@ -1016,14 +1018,15 @@ public class EducationAuthManager {
         }
     }
 
-    private int countEducationPlayers() {
-        int count = 0;
-        for (GeyserSession session : geyser.onlineConnections()) {
-            if (session.isEducationClient()) {
-                count++;
+    private int getPlayerCount() {
+        IGeyserPingPassthrough pingPassthrough = geyser.getBootstrap().getGeyserPingPassthrough();
+        if (pingPassthrough != null) {
+            GeyserPingInfo pingInfo = pingPassthrough.getPingInformation(null);
+            if (pingInfo != null) {
+                return pingInfo.getPlayers().getOnline();
             }
         }
-        return count;
+        return geyser.onlineConnections().size();
     }
 
     // ---- Scheduling ----
