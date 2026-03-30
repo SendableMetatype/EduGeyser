@@ -48,6 +48,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -1018,10 +1019,12 @@ public class EducationAuthManager {
         }
     }
 
+    private static final InetSocketAddress INTERNAL_ADDRESS = new InetSocketAddress("1.1.1.1", 0);
+
     private int getPlayerCount() {
         IGeyserPingPassthrough pingPassthrough = geyser.getBootstrap().getGeyserPingPassthrough();
         if (pingPassthrough != null) {
-            GeyserPingInfo pingInfo = pingPassthrough.getPingInformation(null);
+            GeyserPingInfo pingInfo = pingPassthrough.getPingInformation(INTERNAL_ADDRESS);
             if (pingInfo != null) {
                 return pingInfo.getPlayers().getOnline();
             }
