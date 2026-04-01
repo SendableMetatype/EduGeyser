@@ -57,7 +57,8 @@ public class JavaLoginFinishedTranslator extends PacketTranslator<ClientboundLog
         session.getGeyser().getSessionManager().addSession(playerEntity.uuid(), session);
 
         // Check if they are not using a linked account
-        if (remoteAuthType == AuthType.OFFLINE || playerEntity.uuid().getMostSignificantBits() == 0) {
+        long msb = playerEntity.uuid().getMostSignificantBits();
+        if (remoteAuthType == AuthType.OFFLINE || msb == 0 || msb == 0x0000000100000001L) {
             SkinManager.handleBedrockSkin(playerEntity, session.getClientData());
         }
 
