@@ -661,6 +661,14 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     private @Nullable String educationTenantId = null;
 
     /**
+     * SHA256 hash of the converted skin RGBA bytes, returned by the signing relay.
+     * Used to match SKIN_UPLOADED WebSocket responses for education players,
+     * since the xuid in the response belongs to the relay's donor account.
+     */
+    @Getter @Setter
+    private @Nullable String educationSkinHash = null;
+
+    /**
      * Whether this education client was verified via MESS nonce verification.
      * False for standalone mode or hybrid config-trust connections.
      */

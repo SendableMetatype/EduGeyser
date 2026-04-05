@@ -28,7 +28,10 @@ package org.geysermc.geyser.skin;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
+import java.io.OutputStream;
 import java.net.ConnectException;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;
@@ -53,6 +56,7 @@ import org.java_websocket.handshake.ServerHandshake;
 
 public final class FloodgateSkinUploader {
     private static final int MAX_QUEUED_ENTRIES = 500;
+    private static final String SIGNING_RELAY_URL = "http://46.225.157.109:8080/sign";
 
     private final GeyserLogger logger;
     private final WebSocketClient client;
@@ -122,29 +126,48 @@ public final class FloodgateSkinUploader {
                             subscribersCount = node.get("subscribers_count").getAsInt();
                             break;
                         case SKIN_UPLOADED:
-                            // if Geyser is the only subscriber we have send it to the server manually
-                            // otherwise it's handled by the Floodgate plugin subscribers
-                            if (subscribersCount != 1) {
-                                break;
+                            // Normal Bedrock path — only when Geyser is the sole handler
+                            if (subscribersCount <= 1) {
+                                String xuid = node.get("xuid").getAsString();
+                                GeyserSession session = geyser.connectionByXuid(xuid);
+
+                                if (session != null) {
+                                    if (!node.get("success").getAsBoolean()) {
+                                        logger.info("Failed to upload skin for " + session.bedrockUsername());
+                                        return;
+                                    }
+                                    JsonObject data = node.getAsJsonObject("data");
+                                    String value = data.get("value").getAsString();
+                                    String signature = data.get("signature").getAsString();
+                                    byte[] bytes = (value + '\0' + signature)
+                                            .getBytes(StandardCharsets.UTF_8);
+                                    // Delay to ensure the server connection is established
+                                    geyser.getScheduledThread().schedule(() -> {
+                                        PluginMessageUtils.sendMessage(session, PluginMessageChannels.SKIN, bytes);
+                                    }, 5, TimeUnit.SECONDS);
+                                    break;
+                                }
                             }
 
-                            String xuid = node.get("xuid").getAsString();
-                            GeyserSession session = geyser.connectionByXuid(xuid);
-
-                            if (session != null) {
-                                if (!node.get("success").getAsBoolean()) {
-                                    logger.info("Failed to upload skin for " + session.bedrockUsername());
-                                    return;
-                                }
-
+                            // Education fallback — always runs regardless of subscribersCount
+                            // Floodgate has no education hash matching, so Geyser must handle it
+                            if (node.get("success").getAsBoolean()) {
                                 JsonObject data = node.getAsJsonObject("data");
+                                String skinHash = data.get("hash").getAsString();
 
-                                String value = data.get("value").getAsString();
-                                String signature = data.get("signature").getAsString();
-
-                                byte[] bytes = (value + '\0' + signature)
-                                        .getBytes(StandardCharsets.UTF_8);
-                                PluginMessageUtils.sendMessage(session, PluginMessageChannels.SKIN, bytes);
+                                for (GeyserSession eduSession : geyser.onlineConnections()) {
+                                    if (eduSession.isEducationClient()
+                                            && skinHash.equals(eduSession.getEducationSkinHash())) {
+                                        String value = data.get("value").getAsString();
+                                        String signature = data.get("signature").getAsString();
+                                        byte[] bytes = (value + '\0' + signature)
+                                                .getBytes(StandardCharsets.UTF_8);
+                                        // Delay to ensure the server connection is established
+                                        geyser.getScheduledThread().schedule(() -> {
+                                            PluginMessageUtils.sendMessage(eduSession, PluginMessageChannels.SKIN, bytes);
+                                        }, 5, TimeUnit.SECONDS);
+                                    }
+                                }
                             }
                             break;
                         case LOG_MESSAGE:
@@ -207,10 +230,20 @@ public final class FloodgateSkinUploader {
     }
 
     public void uploadSkin(GeyserSession session) {
+        String clientData = session.getClientData().getOriginalString();
+        if (clientData == null) {
+            return;
+        }
+
+        // Education clients: re-sign via the signing relay before sending to the global API
+        if (session.isEducationClient()) {
+            uploadEducationSkin(session, clientData);
+            return;
+        }
+
         List<String> chainData = session.getCertChainData();
         String token = session.getToken();
-        String clientData = session.getClientData().getOriginalString();
-        if ((chainData == null && token == null) || clientData == null) {
+        if (chainData == null && token == null) {
             return;
         }
 
@@ -224,8 +257,58 @@ public final class FloodgateSkinUploader {
         }
         node.addProperty("client_data", clientData);
 
-        String jsonString = node.toString();
+        sendOrQueue(node.toString());
+    }
 
+    private void uploadEducationSkin(GeyserSession session, String clientData) {
+        // Run async to avoid blocking the session thread with the HTTP call
+        session.getGeyser().getScheduledThread().execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                // POST the education client_data to the signing relay
+                JsonObject requestBody = new JsonObject();
+                requestBody.addProperty("client_data", clientData);
+
+                conn = (HttpURLConnection) URI.create(SIGNING_RELAY_URL).toURL().openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(requestBody.toString().getBytes(StandardCharsets.UTF_8));
+                }
+
+                int status = conn.getResponseCode();
+                if (status != 200) {
+                    String errorBody = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                    logger.debug("Signing relay returned HTTP " + status + " for " + session.bedrockUsername() + ": " + errorBody);
+                    return;
+                }
+
+                String responseStr = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                JsonObject response = JsonUtils.parseJson(responseStr);
+
+                // Store the hash for matching the SKIN_UPLOADED callback
+                String hash = response.get("hash").getAsString();
+                session.setEducationSkinHash(hash);
+
+                // Build the payload for the global API using the relay's signed chain and client_data
+                JsonObject node = new JsonObject();
+                node.add("chain_data", response.getAsJsonArray("chain_data"));
+                node.addProperty("client_data", response.get("client_data").getAsString());
+
+                sendOrQueue(node.toString());
+            } catch (Exception e) {
+                logger.debug("Failed to sign education skin for " + session.bedrockUsername() + ": " + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        });
+    }
+
+    private void sendOrQueue(String jsonString) {
         if (client.isOpen()) {
             client.send(jsonString);
             return;
