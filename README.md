@@ -12,6 +12,7 @@ A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Edu
 - **Separate config files** - `edu_official.yml` and `edu_standalone.yml` with commented templates, keeping the main config clean
 - **Education codec** - Custom StartGamePacket serializer appending the 3 education-specific fields required for Education Edition clients
 - **Floodgate integration** - Deterministic UUID generation and username formatting for education players via [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate)
+- **Education skin support** - Education player skins are re-signed via the [EduGeyser Signing Relay](https://github.com/SendableMetatype/EduGeyser-Signing-Relay) and fed into the existing GeyserMC global API skin pipeline, making education skins visible to Java players
 - **Operator tools** - `/geyser edu` command with status/players/token/reset subcommands and per-tenant health monitoring
 
 ## Downloads
