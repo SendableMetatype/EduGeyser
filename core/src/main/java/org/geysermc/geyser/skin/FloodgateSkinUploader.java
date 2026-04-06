@@ -82,6 +82,7 @@ public final class FloodgateSkinUploader {
             @Override
             public void onOpen(ServerHandshake handshake) {
                 setConnectionLostTimeout(11);
+                logger.info("[SkinDebug] WebSocket connected to global API");
 
                 boolean hasSkinQueue = skinQueue != null;
 
@@ -101,6 +102,7 @@ public final class FloodgateSkinUploader {
 
             @Override
             public void onMessage(String message) {
+                logger.info("[SkinDebug] WS received: " + message.substring(0, Math.min(message.length(), 200)));
                 try {
                     JsonObject node = JsonUtils.parseJson(message);
                     if (node.has("error")) {
@@ -126,10 +128,13 @@ public final class FloodgateSkinUploader {
                             subscribersCount = node.get("subscribers_count").getAsInt();
                             break;
                         case SKIN_UPLOADED:
+                            logger.info("[SkinDebug] SKIN_UPLOADED received, subscribersCount=" + subscribersCount + " success=" + node.get("success").getAsBoolean());
+
                             // Normal Bedrock path — only when Geyser is the sole handler
                             if (subscribersCount <= 1) {
                                 String xuid = node.get("xuid").getAsString();
                                 GeyserSession session = geyser.connectionByXuid(xuid);
+                                logger.info("[SkinDebug] xuid=" + xuid + " sessionFound=" + (session != null));
 
                                 if (session != null) {
                                     if (!node.get("success").getAsBoolean()) {
@@ -144,6 +149,7 @@ public final class FloodgateSkinUploader {
                                     // Delay to ensure the server connection is established
                                     geyser.getScheduledThread().schedule(() -> {
                                         PluginMessageUtils.sendMessage(session, PluginMessageChannels.SKIN, bytes);
+                                        logger.info("[SkinDebug] Bedrock skin plugin message sent for " + session.bedrockUsername());
                                     }, 5, TimeUnit.SECONDS);
                                     break;
                                 }
@@ -154,6 +160,7 @@ public final class FloodgateSkinUploader {
                             if (node.get("success").getAsBoolean()) {
                                 JsonObject data = node.getAsJsonObject("data");
                                 String skinHash = data.get("hash").getAsString();
+                                logger.info("[SkinDebug] Education hash scan, looking for hash=" + skinHash);
 
                                 for (GeyserSession eduSession : geyser.onlineConnections()) {
                                     if (eduSession.isEducationClient()
@@ -165,6 +172,7 @@ public final class FloodgateSkinUploader {
                                         // Delay to ensure the server connection is established
                                         geyser.getScheduledThread().schedule(() -> {
                                             PluginMessageUtils.sendMessage(eduSession, PluginMessageChannels.SKIN, bytes);
+                                            logger.info("[SkinDebug] Education skin applied for " + eduSession.bedrockUsername());
                                         }, 5, TimeUnit.SECONDS);
                                     }
                                 }
@@ -231,6 +239,7 @@ public final class FloodgateSkinUploader {
 
     public void uploadSkin(GeyserSession session) {
         String clientData = session.getClientData().getOriginalString();
+        logger.info("[SkinDebug] uploadSkin called for " + session.bedrockUsername() + " edu=" + session.isEducationClient() + " clientData=" + (clientData != null ? "present" : "null"));
         if (clientData == null) {
             return;
         }
@@ -257,6 +266,7 @@ public final class FloodgateSkinUploader {
         }
         node.addProperty("client_data", clientData);
 
+        logger.info("[SkinDebug] Normal Bedrock skin queued/sent for " + session.bedrockUsername() + " wsOpen=" + client.isOpen());
         sendOrQueue(node.toString());
     }
 
@@ -283,7 +293,7 @@ public final class FloodgateSkinUploader {
                 int status = conn.getResponseCode();
                 if (status != 200) {
                     String errorBody = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-                    logger.debug("Signing relay returned HTTP " + status + " for " + session.bedrockUsername() + ": " + errorBody);
+                    logger.info("[SkinDebug] Signing relay returned HTTP " + status + " for " + session.bedrockUsername() + ": " + errorBody);
                     return;
                 }
 
@@ -299,6 +309,7 @@ public final class FloodgateSkinUploader {
                 node.add("chain_data", response.getAsJsonArray("chain_data"));
                 node.addProperty("client_data", response.get("client_data").getAsString());
 
+                logger.info("[SkinDebug] Education skin queued/sent for " + session.bedrockUsername() + " hash=" + hash + " wsOpen=" + client.isOpen());
                 sendOrQueue(node.toString());
             } catch (Exception e) {
                 logger.debug("Failed to sign education skin for " + session.bedrockUsername() + ": " + e.getMessage());
