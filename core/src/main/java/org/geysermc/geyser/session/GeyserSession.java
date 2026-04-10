@@ -1892,8 +1892,8 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setDefaultSpawn(Vector3i.ZERO);
         startGamePacket.setAchievementsDisabled(!geyser.config().gameplay().xboxAchievementsEnabled());
         startGamePacket.setCurrentTick(-1);
-        startGamePacket.setEduEditionOffers(educationClient ? 1 : 0);
-        startGamePacket.setEduFeaturesEnabled(educationClient);
+        startGamePacket.setEduEditionOffers(0);
+        startGamePacket.setEduFeaturesEnabled(false);
         startGamePacket.setRainLevel(0);
         startGamePacket.setLightningLevel(0);
         startGamePacket.setMultiplayerGame(true);
@@ -1915,7 +1915,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setWorldTemplateOptionLocked(false);
         startGamePacket.setSpawnBiomeType(SpawnBiomeType.DEFAULT);
         startGamePacket.setCustomBiomeName("");
-        startGamePacket.setEducationProductionId(educationClient ? "education" : "");
+        startGamePacket.setEducationProductionId("");
         startGamePacket.setForceExperimentalGameplay(OptionalBoolean.empty());
 
         String serverName = geyser.config().gameplay().serverName();
