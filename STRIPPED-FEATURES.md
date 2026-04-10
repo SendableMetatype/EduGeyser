@@ -49,6 +49,18 @@ Removed because the items/entities that trigger these packets don't exist on the
 
 A separate block break detection threshold (0.65f) for education clients in BlockBreakHandler. The comment noted it was unused since server-authoritative block breaking handles edu clients correctly. Removed with no gameplay impact.
 
+## Removed: Education StartGamePacket Flags
+
+The following StartGamePacket fields were originally set differently for education clients:
+
+| Field | Education Value | Standard Bedrock Value |
+|-------|----------------|----------------------|
+| `eduEditionOffers` | `1` | `0` |
+| `eduFeaturesEnabled` | `true` | `false` |
+| `educationProductionId` | `"education"` | `""` |
+
+Removed as of v2.9.5-edu.7. Testing confirmed Education clients function correctly with the default Bedrock values. These were originally set out of caution during initial development but proved unnecessary.
+
 ## What Remains (Minimum Required)
 
 1. **EducationStartGameSerializer** — appends 3 empty strings (eduSharedUri resource/buttonName/linkUri) to StartGamePacket. Without these, the edu client refuses to load the world.
