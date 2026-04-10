@@ -1046,7 +1046,7 @@ In addition to the three structural fields (Section 8), the following StartGameP
 
 **Note on `vanillaVersion`:** This field remains at `"*"` (Geyser's default wildcard to bypass strict version checking). During debugging, it was identified as a leading suspect — the theory was that Education's C++ engine might fail to parse `"*"` as a Major.Minor.Patch version string. Testing confirmed this was NOT the cause of the disconnect. Setting it to `"1.21.132"` or `"1.21.130"` made no difference. The root cause was always the three missing structural fields (Section 8).
 
-**Note on education flags:** Toggling `eduEditionOffers`, `eduFeaturesEnabled`, and `educationProductionId` on or off does NOT change the disconnect behavior. They are supplementary to the core serializer fix. As of v2.9.5-edu.7, these three flags are set to their default Bedrock values (`0`, `false`, `""`) for all clients including Education. Testing confirmed Education clients function correctly without them. They were originally set to their Education values out of caution during initial development but proved unnecessary.
+**Note on education flags:** Toggling `eduEditionOffers`, `eduFeaturesEnabled`, and `educationProductionId` on or off does NOT change the disconnect behavior. They are supplementary to the core serializer fix and are set for proper Education feature support.
 
 ### Experiments
 
