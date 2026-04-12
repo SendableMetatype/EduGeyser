@@ -2,20 +2,17 @@
 
 ## Connect Minecraft Education Edition to Java Servers
 
-EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows **Minecraft Education Edition** students to join **Java Edition** servers. It works alongside Bedrock Edition - both Education and regular Bedrock players can connect to the same server simultaneously.
+EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows **Minecraft Education Edition** students to join **Java Edition** servers. It works alongside regular Bedrock Edition - both Education and Bedrock players can connect to the same server simultaneously.
 
 ---
 
 ## Table of Contents
 
 - [Requirements](#requirements)
-- [Quick Start (Which method should I use?)](#quick-start)
-- [Method A: Standalone Mode (No Admin Access Needed)](#method-a-standalone-mode)
-- [Method B: Dedicated Server Mode (Recommended for Schools)](#method-b-dedicated-server-mode)
+- [Installation](#installation)
 - [How Students Connect](#how-students-connect)
-- [Multi-Tenancy (Multiple Schools)](#multi-tenancy-multiple-schools)
-- [Configuration Reference](#configuration-reference)
-- [In-Game Management Commands](#in-game-management-commands)
+- [Server List Broadcasting (Optional)](#server-list-broadcasting-optional)
+- [EduFloodgate Configuration](#edufloodgate-configuration)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 
@@ -26,7 +23,7 @@ EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows
 **Server side:**
 - A Java Edition Minecraft server (Paper, Spigot, etc.)
 - Java 17 or newer
-- EduGeyser jar (replaces standard Geyser) - works as a plugin on Paper/Spigot or as a standalone proxy
+- EduGeyser jar (replaces standard Geyser)
 - EduFloodgate jar (replaces standard Floodgate) - required for proper username/UUID handling
 
 > **Simplest setup:** A single Paper server with EduGeyser and EduFloodgate as plugins. No proxy needed. If you already run a Velocity/BungeeCord network, EduGeyser works there too - install EduGeyser on the proxy and EduFloodgate on both the proxy and backend servers.
@@ -38,433 +35,86 @@ EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows
 
 ---
 
-## Quick Start
-
-Choose your setup method based on your situation:
-
-| Situation | Method | What You Need |
-|-----------|--------|---------------|
-| **I'm a teacher or student** with no IT admin access | [Method A: Standalone](#method-a-standalone-mode) | Any M365 Education account + 5 minutes |
-| **I'm an IT admin** or have Global Admin access to my school's M365 tenant | [Method B: Dedicated Server](#method-b-dedicated-server-mode) | Global Admin account + 10 minutes |
-| **I want to test** with a personal tenant (not a school) | [Method B](#method-b-dedicated-server-mode) | Free trial tenant (10 launches) or commercial license ($3/month) |
-
-Both methods give students a server list. **Method A** uses the included resource pack — students enter your server's IP once and it's saved permanently. **Method B** populates the server list automatically — students just click "Play" without entering an IP.
-
----
-
-## Method A: Standalone Mode
-
-*No admin access needed. Any student or teacher can set this up.*
-
-### Overview
-
-In Standalone Mode, you obtain a token from Microsoft's Education services that authorizes your Geyser server to accept Education connections from your school's tenant. You can obtain tokens using the `/geyser edu token` command (recommended) or the EduGeyser Token Tool as a fallback. Students connect using the included server list resource pack (recommended) or a one-time link. The resource pack server list requires students to enter your server's IP once — after that, it's saved permanently.
-
-### Step 1: Install EduGeyser
+## Installation
 
 1. Download the latest [EduGeyser](https://github.com/SendableMetatype/EduGeyser/releases) and [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate/releases) jars
 2. Place them in your server's plugins folder (replacing standard Geyser and Floodgate if present)
-3. Start the server once to generate config files, then stop it
+3. Make sure `auth-type` is set to `floodgate` in the Geyser config:
 
-### Step 2: Configure Geyser
-
-Open your Geyser config file (`plugins/Geyser-Spigot/config.yml` on Paper/Spigot, or `plugins/Geyser-Velocity/config.yml` on Velocity) and set:
-
-```yaml
-education:
-  tenancy-mode: standalone
-```
-
-Also make sure `auth-type` is set to `floodgate`:
 ```yaml
 auth-type: floodgate
 ```
 
-Start the server once — EduGeyser will generate `edu_standalone.yml` automatically. You'll obtain a token in the next step.
+4. Start the server
 
-### Step 3: Obtain a Server Token
-
-You need a server token from Microsoft that authorizes your server for your school's tenant. Any student or teacher with an M365 Education account at the school can obtain one.
-
-#### Option 1: `/geyser edu token` Command (Recommended)
-
-With your server running:
-
-1. Run `/geyser edu token` from the server console (or in-game with admin permissions)
-2. A device code and URL will appear in the console:
-   ```
-   [EduToken] Go to: https://microsoft.com/devicelogin
-   [EduToken] Enter code: ABCD1234
-   ```
-3. Open the URL in any web browser and enter the code
-4. Sign in with any Microsoft 365 Education account from your school — student or teacher accounts both work
-5. If your school uses multi-factor authentication, complete the MFA prompt as usual
-6. The token is automatically saved and activated — no config editing needed
-
-Tokens obtained this way **auto-refresh** — you don't need to manually renew them. You can run the command multiple times with accounts from different schools to add multiple tenants.
-
-> **Note:** If the sign-in fails with "does not meet the criteria to access this resource", your school's Conditional Access policies are blocking the device code flow. Use Option 2 instead.
-
-#### Option 2: EduGeyser Token Tool (Fallback)
-
-If the device code flow is blocked by your school's Conditional Access policies, use the Token Tool instead:
-
-1. Download the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) to any Windows computer — it doesn't need to be the same machine as your server. [Source code](education-tools/edu_token_tool_gui.py)
-2. Double-click the `.exe` to open it. No installation or admin privileges required
-3. Click the green **Sign in with Microsoft** button. A Windows sign-in dialog will appear
-4. Sign in with any Microsoft 365 Education account from your school
-5. If your school uses multi-factor authentication, complete the MFA prompt as usual
-6. The tool will show a success screen with your account name, tenant ID, and the server token
-7. Click **Copy Token** to copy it to your clipboard, or **Save to File** to save it as a text file
-8. Open `edu_standalone.yml` in your Geyser config directory and paste the token into one of the empty slots:
-   ```yaml
-   tokens:
-     - "paste-your-full-server-token-here"
-     - ""
-     - ""
-   ```
-9. Restart the server
-
-Tokens from the Token Tool must be manually renewed when they expire (~10 days). If you have students from **multiple schools**, add a token from each school:
-```yaml
-tokens:
-  - "token-from-school-A"
-  - "token-from-school-B"
-```
-
-#### Option 3: Manual Fiddler Capture
-
-If neither of the above options work, see the [Manual Token Capture Guide](MANUAL-TOKEN-CAPTURE.md) for an alternative method using Fiddler.
-
-### Step 4: Get Students Connected
-
-You have two options - see [How Students Connect](#how-students-connect) for full details:
-
-1. **Resource pack (recommended):** Share the included `education-tools/ServerButton.mcpack` with students. They open it, activate it, and get a permanent Servers button on their home screen where they can save your server.
-
-2. **Connection link (quick):** Share this link and students click it to connect instantly:
-   ```
-   minecraftedu://connect/?serverUrl=YOUR_SERVER_IP:19132
-   ```
-   The included [`join-server.html`](education-tools/join-server.html) page makes this easy - edit the IP and share the file.
-
-### Token Renewal
-
-- **Tokens from `/geyser edu token`** refresh automatically — no action needed.
-- **Tokens from the Token Tool or Fiddler** expire after approximately 10 days. When they expire, students will get a connection error. Run the Token Tool again, sign in, copy the new token, and update the `tokens:` list in `edu_standalone.yml`.
-
-Students using the resource pack won't need to re-enter the server address. Only the server-side token needs updating.
-
----
-
-## Method B: Dedicated Server Mode
-
-*Requires Global Admin access to an M365 Education tenant. Server appears in Education Edition's built-in server list.*
-
-### Overview
-
-In Dedicated Server Mode, EduGeyser registers itself with Microsoft's Education server services (MESS) using the official dedicated server API. Your server appears in Education Edition's server list - students can browse to it and click "Play" without needing a link or IP address. Token refresh is fully automatic.
-
-### Step 1: Prepare Your M365 Tenant
-
-You need **Global Administrator** access to a Microsoft 365 Education tenant.
-
-**If you're a school IT admin:** You already have this.
-
-**If you want a test tenant:** You have two options:
-
-1. **Free trial (recommended for testing):** Create a free Microsoft 365 Education tenant with trial Minecraft Education licenses. Each trial user gets 10 launches before the license expires. This is enough to test server connectivity, authentication, and multi-tenancy without spending anything. Sign up at [Microsoft Education](https://www.microsoft.com/en-us/education/products/office).
-
-2. **Commercial license:** Purchase a commercial Minecraft Education license ($36/year or ~$3/month) at the Minecraft Education commercial purchase page. This creates a new M365 tenant where you are Global Admin with unlimited launches. You can cancel within 7 days for a prorated refund.
-
-### Step 2: Install EduGeyser
-
-1. Download the latest [EduGeyser](https://github.com/SendableMetatype/EduGeyser/releases) and [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate/releases) jars
-2. Place them in your server's plugins folder (replacing standard Geyser and Floodgate if present)
-3. Start the server once to generate config files, then stop it
-
-### Step 3: Configure Geyser
-
-Open your Geyser config file and set:
-
-```yaml
-education:
-  tenancy-mode: official
-```
-
-Also make sure `auth-type` is set to `floodgate`:
-```yaml
-auth-type: floodgate
-```
-
-Start the server once to generate `edu_official.yml`, then stop it. Open `edu_official.yml` and configure:
-
-```yaml
-# Display name for the server in Education Edition's server list.
-server-name: "My School's Java Server"
-
-# Public IP:port for MESS registration.
-# Recommended to set this manually, especially if behind NAT.
-server-ip: "play.myserver.com:19132"
-
-# Maximum players shown in the Education Edition server list.
-max-players: 40
-```
-
-Leave `server-id` empty. It will be filled automatically after first registration.
-
-### Step 4: First Startup - Device Code Authentication
-
-Start the server. EduGeyser will display a message like:
-
-```
-[EduTooling] ============================================
-[EduTooling]   Go to: https://microsoft.com/devicelogin
-[EduTooling]   Enter code: ABCD1234
-[EduTooling]   (tooling authentication)
-[EduTooling] ============================================
-```
-
-1. Open the URL in a web browser (any device)
-2. Enter the code shown in the console
-3. Sign in with your **Global Admin** M365 Education account
-4. Accept the permissions prompt
-5. A second device code will appear — repeat the process. This is normal; EduGeyser authenticates twice (once for tooling access, once for the education client)
-
-Once both sign-ins are complete, EduGeyser will:
-- Register the server with Microsoft's Education services
-- Obtain a server token automatically
-- Register your server's IP so it appears in the Education server list
-- Begin sending heartbeats to keep the server listed as "online"
-- Save all tokens to `edu_official.yml` for automatic renewal on future restarts
-
-You should see:
-```
-[EduTooling] Server registered with ID: UXHG99K8JX2P
-[EduTooling] Server hosted at play.myserver.com:19132
-[EduTooling] Server is fully configured and broadcasted.
-[EduTooling] Students can now connect from the server list.
-```
-
-### Step 5: Students Connect
-
-Students open Minecraft Education Edition, go to the **Servers** tab, and your server appears in the list. They click "Play" to connect.
-
-### After First Setup
-
-On subsequent server restarts, EduGeyser silently refreshes all tokens in the background. The device code flow is only needed once (or if you run `/geyser edu reset`).
-
-### Enabling Cross-Tenant Access
-
-There are two ways to allow students from **other schools** (other M365 tenants) to connect:
-
-#### Option 1: MESS Cross-Tenant (API-Based)
-
-Cross-tenant access can be configured through the MESS tooling API. Both the hosting tenant and the joining tenant need to enable cross-tenant settings. For details on the API calls required, see the [MESS Tooling Reference](MESS-Tooling-Notebook-Reference.md).
-
-#### Option 2: Hybrid Mode (Token-Based)
-
-Alternatively, you can use **hybrid mode** to manually add tokens for additional schools.
-
-Set `tenancy-mode: hybrid` in `config.yml`, then add tokens for additional schools in `edu_standalone.yml` using `/geyser edu token` (recommended, auto-refreshes) or the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback.
-
-In hybrid mode, your primary school connects via the MESS-registered token (automatic). Additional schools connect using the tokens in `edu_standalone.yml`.
-
-Each token contains the school's tenant ID. EduGeyser parses them on startup and routes connecting students to the correct token automatically.
+That's it. Education clients can now connect. No tokens, no configuration, no admin accounts needed.
 
 ---
 
 ## How Students Connect
 
-### If Using Dedicated Server Mode (Method B)
+Education Edition does not natively have a server list for direct IP connections. There are two ways for students to connect:
 
-Students open Education Edition → **Servers** tab → find your server → click **Play**. That's it.
+### Connection Link (Quickest)
 
-You can also distribute the resource pack (see below) so students can add additional servers themselves.
-
-### If Using Standalone Mode (Method A)
-
-#### Recommended: EduGeyser Server List Resource Pack
-
-The best way for students to connect is the included **EduGeyser Server List resource pack**. It adds a permanent **Servers** button to Education Edition's home screen - the same server list interface that regular Bedrock players have, with the ability to save servers by name, IP, and port.
-
-**Why this is the best option:**
-- One-click install (open the `.mcpack` file) - just as easy as clicking a URI link
-- But unlike a link, it **permanently integrates** into the home screen
-- Students can save your server and reconnect any time without needing a new link
-- Multiple servers can be saved
-- Familiar Bedrock-style UI - students who've used regular Minecraft will recognize it
-
-**Setup:**
-1. Share the [`ServerButton.mcpack`](education-tools/ServerButton.mcpack) file with students (via Teams, Classroom, email, or a shared drive)
-2. Students open the file - Education Edition launches and installs the resource pack automatically
-3. Students go to **Settings → Global Resources** and activate the pack
-4. Back on the Play screen, a **Servers** button now appears
-5. Students click **Add Server**, enter your server's name, IP, and port, then click **Save**
-6. The server is now permanently saved - students just click it to connect in the future
-
-The resource pack adds a server list UI for direct IP connections to Education Edition's home screen.
-
-#### Alternative: Connection Link (Quick, One-Time)
-
-If you need students connected immediately without installing anything, share a link:
+Share this link with students. They click it and Education Edition opens and connects directly:
 
 ```
 minecraftedu://connect/?serverUrl=YOUR_SERVER_IP:19132
 ```
 
-Or share the included `join-server.html` page (edit the server IP first). Students click it and Education Edition opens and connects directly. Works on all platforms.
+The included [`join-server.html`](education-tools/join-server.html) page makes this easy - edit the IP and share the file. Students click the button and connect.
 
-The downside: this is a one-time connection. Students would need the link again each time they want to rejoin. For repeated use, the resource pack is much better.
+The downside: this is a one-time connection. Students need the link again each time they want to rejoin. For repeated use, the resource pack is better.
+
+### Server List Resource Pack (Recommended for Repeated Use)
+
+The included **EduGeyser Server List resource pack** adds a permanent **Servers** button to Education Edition's home screen - the same server list interface that regular Bedrock players have.
+
+**Setup:**
+1. Share the [`ServerButton.mcpack`](education-tools/ServerButton.mcpack) file with students (via Teams, Classroom, email, or a shared drive)
+2. Students open the file - Education Edition installs the resource pack automatically
+3. Students go to **Settings > Global Resources** and activate the pack
+4. Back on the Play screen, a **Servers** button now appears
+5. Students click **Add Server**, enter your server's name, IP, and port, then click **Save**
+6. The server is permanently saved - students just click it to connect
 
 ---
 
-## Multi-Tenancy (Multiple Schools)
+## Server List Broadcasting (Optional)
 
-EduGeyser supports three tenancy modes (plus `off` to disable). Set `tenancy-mode` in `config.yml`:
+If you want your server to appear automatically in Education Edition's built-in server browser (so students don't need to enter an IP at all), install the [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension).
 
-| Mode | Config Value | How Tokens Work |
-|------|-------------|-----------------|
-| **Off** | `off` | Education support is disabled. Education clients are rejected. (default) |
-| **Official** | `official` | MESS handles everything. Server config in `edu_official.yml`. |
-| **Hybrid** | `hybrid` | MESS handles your primary school. Additional schools via tokens in `edu_standalone.yml`. |
-| **Standalone** | `standalone` | No MESS registration. All tokens come from `edu_standalone.yml`. |
+This is completely optional and requires a Global Admin account for each M365 Education tenant you want to broadcast to. See the extension's README for setup instructions.
 
-### How Token Routing Works
+---
 
-Each server token contains the school's tenant ID as its first field (before the first `|`). On startup, EduGeyser parses every token and builds a routing table mapping tenant IDs to tokens.
+## EduFloodgate Configuration
 
-When an Education Edition student connects, EduGeyser extracts their school's tenant ID from their login chain and looks it up in the routing table. If a match is found, that token is used for the handshake. If no match is found, EduGeyser falls back to the MESS-registered token (official/hybrid modes), and if that also fails, the student is disconnected with a message telling them (and the server admin) which tenant ID was not configured.
-
-### Example: Standalone with Two Schools
-
-Set `tenancy-mode: standalone` in `config.yml`, then in `edu_standalone.yml`:
+EduFloodgate uses a separate prefix for education players to distinguish them from regular Bedrock players:
 
 ```yaml
-tokens:
-  - "03b5e7a1-...|e2a49ff3-...|2026-03-25T...|41863f21..."
-  - "a1b2c3d4-...|f5e6d7c8-...|2026-03-25T...|8bc9af01..."
+# In EduFloodgate config.yml:
+education-prefix: "+"
+education-hash: true
 ```
 
-On startup you'll see:
-```
-[EduTenancy] Registered token for tenant 03b5e7a1-... (source: edu_standalone.yml)
-[EduTenancy] Registered token for tenant a1b2c3d4-... (source: edu_standalone.yml)
-[EduTenancy] Tenancy mode: STANDALONE, registered tenants: 2
-```
+- `education-prefix` - prefix for education player usernames (default: `+`)
+- `education-hash` - appends a 4-character tenant hash to prevent name collisions between students from different schools (default: `true`)
 
-### Example: Hybrid with MESS + One Extra School
-
-Set `tenancy-mode: hybrid` in `config.yml`. Configure your primary school in `edu_official.yml`, then add the partner school's token in `edu_standalone.yml` or via `/geyser edu token`.
-
-Your primary school connects via MESS (automatic token). The partner school connects via the standalone token.
-
----
-
-## Configuration Reference
-
-### EduGeyser Config (`config.yml`)
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `education.tenancy-mode` | `"off"` | `"off"` = disabled, `"official"` = MESS registration, `"hybrid"` = MESS + standalone tokens, `"standalone"` = standalone tokens only. |
-
-### Official Server Config (`edu_official.yml`)
-
-Generated automatically on startup. Used for official/hybrid modes.
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `server-name` | `""` | Display name in the Education server list. |
-| `server-ip` | `""` | Public IP:port for MESS registration. Auto-detected if empty. |
-| `max-players` | `40` | Player limit shown in the Education server list. |
-| `server-id` | `""` | Auto-filled after first MESS registration. Don't edit manually. |
-
-Session data (tokens, refresh tokens, expiry) is stored below the config fields and managed automatically.
-
-### Standalone Token Config (`edu_standalone.yml`)
-
-Generated automatically on startup. Used for standalone/hybrid modes.
-
-| Section | Description |
-|---------|-------------|
-| `tokens:` | Paste server tokens from the EduGeyser Token Tool here. Each token authorizes one school's tenant. |
-| `device-code-tokens:` | Managed automatically by `/geyser edu token`. Do not edit. |
-
-### EduFloodgate Config (`config.yml`)
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `education-prefix` | `"+"` | Prefix for Education player usernames (e.g., `+Mark7b91`). Must be different from the Bedrock prefix (`.`). |
-
-### Required Geyser Settings
-
-These must be set for Education Edition support to work:
-
-```yaml
-# In config.yml:
-auth-type: floodgate
-```
-
-> **Note:** `validate-bedrock-login` (under advanced settings) should remain `true` — don't disable it. EduGeyser handles Education player authentication automatically based on the configured tenancy mode, separately from Bedrock player validation. You do not need to weaken security for Bedrock players.
-
----
-
-## In-Game Management Commands
-
-| Command | Description |
-|---------|-------------|
-| `/geyser edu` or `/geyser edu status` | Shows Education system status, tenancy mode, tenant table with token health, and player count. Shows Server ID/IP for official/hybrid modes. |
-| `/geyser edu players` | Lists all connected Education Edition players with their school tenant and role (student/teacher) |
-| `/geyser edu token` | Starts a device code flow to obtain a server token for standalone/hybrid mode. Tokens auto-refresh. Can be run multiple times for different schools. |
-| `/geyser edu reset` | Deletes saved tokens and restarts device code authentication. Use if authentication breaks. |
-
-Permission: `geyser.command.edu`
+With default settings, an education player named "Mark" from tenant `03b5e7a1-...` would appear as `+Mark7b91`.
 
 ---
 
 ## Troubleshooting
 
-### Students get disconnected with "Your school is not configured on this server"
-
-The server has no token matching the connecting student's school tenant.
-
-- **Standalone Mode:** Make sure you have a token from the student's school in `edu_standalone.yml`. Each token only works for the school it was obtained from.
-- **Dedicated Server Mode:** Run `/geyser edu reset` to re-authenticate. If the student is from a different school, enable cross-tenant or use hybrid mode to add their school's token.
-- **Token expired:** Tokens last about 10 days. Get a fresh one and update the config.
-
 ### "An error occurred" immediately after connecting
 
-This usually means the server is not running EduGeyser (the modified Geyser with Education support). Verify you're using the EduGeyser jar, not standard Geyser.
-
-### Students can't find the server in their server list
-
-- The automatic server list only works with **Dedicated Server Mode (Method B)**. Standalone Mode uses the resource pack server list, which requires entering the server IP.
-- Verify the server is registered: run `/geyser edu status` and check that it shows as active with a server ID.
-- The Dedicated Server feature must be enabled in the school's M365 tenant by a Global Admin.
-
-### "Your sign-in was successful but does not meet the criteria to access this resource"
-
-The school's M365 tenant has **Conditional Access** policies that block the device code authentication flow. This is common in large school districts with strict security policies.
-
-**Workaround:** Use Standalone Mode (Method A) with the EduGeyser Token Tool instead. The Token Tool uses a different authentication method that is not affected by Conditional Access policies.
-
-### Device code flow times out / no prompt appears
-
-- For **Dedicated Server Mode (Method B)**, make sure you're signing in with a **Global Admin** account. For **`/geyser edu token`**, any student or teacher account works.
-- The device code expires after about 15 minutes. If it times out, restart the server to get a new code.
-- Check that your tenant has an active Minecraft Education license.
-- If the device code flow is blocked by Conditional Access policies, use the [EduGeyser Token Tool](education-tools/EduGeyser%20Token%20Tool.exe) as a fallback (see [Method A Step 3](#step-3-obtain-a-server-token)).
+This usually means the server is not running EduGeyser. Verify you're using the EduGeyser jar, not standard Geyser.
 
 ### Education players have weird usernames like `+Mark7b91`
 
-This is the Education username format: `+` prefix + player name + 4-character tenant hash. The hash distinguishes players from different schools who might share the same name. It is derived from the school's tenant ID.
-
-### Server shows "offline" in the Education server list but students can still connect
-
-The heartbeat update may have stopped. Run `/geyser edu status` to check. If the token has expired, run `/geyser edu reset`.
-
-Even when showing "offline," students can still connect by clicking the server entry - the status is cosmetic.
+This is the education username format: `+` prefix + player name + 4-character tenant hash. The hash distinguishes players from different schools who might share the same name. It is derived from the school's tenant ID. You can disable the hash in EduFloodgate's config by setting `education-hash: false`.
 
 ### Regular Bedrock players can't connect anymore
 
@@ -472,46 +122,41 @@ EduGeyser supports both Education and Bedrock clients simultaneously. If Bedrock
 - Make sure `auth-type` is set to `floodgate`
 - Make sure EduFloodgate is installed alongside EduGeyser
 
+### Students get "Invalid Tenant ID" or get disconnected immediately
+
+The student's education token may have expired. Have them restart Education Edition to get a fresh login session.
+
 ---
 
 ## FAQ
 
 ### Does this work with any Java server?
 
-Yes - Paper, Spigot, Fabric, Forge, or any other Java server that Geyser normally supports. The simplest setup is a single Paper server with EduGeyser and EduFloodgate as plugins.
+Yes - Paper, Spigot, Fabric, Forge, or any other Java server that Geyser normally supports.
 
 ### Can Education and Bedrock players be on the same server?
 
-Yes. EduGeyser detects each client type automatically and applies the correct protocol handling. Both can play together.
+Yes. EduGeyser detects each client type automatically. Both can play together.
 
 ### Do students need to install anything?
 
-No additional software is needed. For the best experience, distribute the included server list resource pack (`.mcpack` file) - students open it once and get a permanent Servers button on their home screen. Without the resource pack, students can still connect via a one-time link.
+No additional software. For the best experience, distribute the server list resource pack so students get a permanent Servers button. Without it, students connect via a one-time link.
 
 ### Is this safe for schools?
 
-EduGeyser preserves Microsoft's tenant-based authentication. Students authenticate through their school's Microsoft 365 accounts. In official and hybrid modes, connecting clients are verified against Microsoft's server via nonce checking. The server token system ensures only authorized servers can accept Education connections.
+Students authenticate through their school's Microsoft 365 accounts. Player identity is cryptographically verified via Microsoft Education Services. The server can identify each student's school (tenant ID) and role (student/teacher).
 
 ### How many students can connect?
 
-The same as any Geyser server - typically 50-100+ depending on your Java server's hardware. The `max-players` config only affects the number displayed in the Education server list, not an actual limit.
+The same as any Geyser server - typically 50-100+ depending on your Java server's hardware.
 
 ### Does this cost anything?
 
-The software is free. If you need your own M365 Education tenant for testing (Method B), you can create a free trial tenant with 10 launches per user. For unlimited use, a commercial license costs $36/year or ~$3/month.
-
-### How long do tokens last?
-
-- **Manual tokens in `edu_standalone.yml` (from Token Tool or Fiddler):** ~10 days. Must be manually refreshed.
-- **`/geyser edu token` tokens:** Auto-refresh every 30 minutes. No manual intervention needed.
-- **Dedicated Server Mode (MESS):** Tokens refresh automatically every 30 minutes. No manual intervention needed after initial setup.
+The software is free. No Microsoft licenses, admin accounts, or subscriptions are required for basic education support.
 
 ### Can students from different schools join the same server?
 
-Yes, there are two ways:
-
-1. **Cross-tenant via MESS** (Dedicated Server Mode): Enable cross-tenant through the MESS tooling API. Both the hosting and joining tenants need to enable cross-tenant settings. See the [MESS Tooling Reference](MESS-Tooling-Notebook-Reference.md) for details.
-2. **Hybrid or standalone mode**: Add a server token from each school via `/geyser edu token` or by pasting tokens in `edu_standalone.yml`. EduGeyser routes each student to the correct token based on their school's tenant ID.
+Yes. Any student from any M365 Education tenant can connect without any server-side configuration.
 
 ---
 
@@ -523,10 +168,10 @@ Education Edition runs on these platforms, all of which can connect to EduGeyser
 
 | Platform | Connection Methods |
 |----------|-------------------|
-| Windows 10/11 | Resource pack, URI link / connection page, server list (Method B) |
-| macOS | Resource pack, URI link, server list (Method B) |
-| iPad / iOS | Resource pack, URI link, server list (Method B) |
-| Chromebook | Resource pack, URI link, server list (Method B) |
-| Android | Resource pack, URI link, server list (Method B) |
+| Windows 10/11 | Resource pack, URI link, server list (with extension) |
+| macOS | Resource pack, URI link, server list (with extension) |
+| iPad / iOS | Resource pack, URI link, server list (with extension) |
+| Chromebook | Resource pack, URI link, server list (with extension) |
+| Android | Resource pack, URI link, server list (with extension) |
 
 The `minecraftedu://connect` URI scheme works on all platforms where Education Edition is installed.
