@@ -1,3 +1,27 @@
+# EduGeyser
+
+A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Education Edition** clients to join **Java Edition** servers. Both Education and regular Bedrock players can connect to the same server simultaneously.
+
+## Features
+
+- Education Edition clients can connect to any Java server running EduGeyser
+- Students from any school or tenant can join without server-side configuration
+- Verified player identity via Microsoft Education Services
+- Education player skins visible to Java players via the [EduGeyser Signing Relay](https://github.com/SendableMetatype/EduGeyser-Signing-Relay)
+- [Floodgate](https://github.com/SendableMetatype/EduFloodgate) integration with education-specific UUIDs and username formatting
+- Optional [server list broadcasting](https://github.com/SendableMetatype/Geyser-Education-Extension) for schools that want their server to appear in Education Edition's built-in server browser
+
+## Downloads
+
+Pre-built jars are available on the [Releases](https://github.com/SendableMetatype/EduGeyser/releases) page.
+
+## Documentation
+
+- **[MESS Tooling Reference](https://github.com/SendableMetatype/EduGeyser/blob/full/MESS-Tooling-Notebook-Reference.md)** - Technical reference for the Microsoft Education Server Services API
+- **[Master Documentation](https://github.com/SendableMetatype/EduGeyser/blob/full/edugeyser-master-documentation.md)** - Authentication flow, protocol differences, and MESS API details
+
+---
+
 <img src="https://geysermc.org/img/geyser-1760-860.png" alt="Geyser" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
