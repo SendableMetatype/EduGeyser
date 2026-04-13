@@ -1,4 +1,5 @@
-# EduGeyser
+# Edu<img width="1810" height="869" alt="Edugeyser logo with vibrant geyser burst" src="https://github.com/user-attachments/assets/39b86e80-6697-4a2e-8307-f5e2a53e8b96" />
+Geyser
 
 A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Education Edition** clients to join **Java Edition** servers. Both Education and regular Bedrock players can connect to the same server simultaneously.
 
@@ -23,19 +24,19 @@ Pre-built jars are available on the [Releases](https://github.com/SendableMetaty
 
 ---
 
-<img src="https://geysermc.org/img/geyser-1760-860.png" alt="Geyser" width="600"/>
+<img src="https://res.cloudinary.com/dnqnmpfbt/image/upload/v1776060273/Edugeyser_logo_with_vibrant_geyser_burst_tem6rz.png" alt="Edu Geyser" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/613163671870242838.svg?color=%237289da&label=discord)](https://discord.gg/geysermc)
 [![Crowdin](https://badges.crowdin.net/e/51361b7f8a01644a238d0fe8f3bddc62/localized.svg)](https://translate.geysermc.org/)
 
-Geyser is a bridge between Minecraft: Bedrock Edition and Minecraft: Java Edition, closing the gap from those wanting to play true cross-platform.
+Edu Geyser is a bridge between Minecraft: Bedrock Edition, Minecraft: Education Edition, and Minecraft: Java Edition, closing the gap for those who want to play across all 3 platforms.
 
 Geyser is an [Open Collaboration](https://opencollaboration.dev/) project.
 
-## What is Geyser?
-Geyser is a proxy, bridging the gap between Minecraft: Bedrock Edition and Minecraft: Java Edition servers.
-The ultimate goal of this project is to allow Minecraft: Bedrock Edition users to join Minecraft: Java Edition servers as seamlessly as possible. However, due to the nature of Geyser translating packets over the network of two different games, *do not expect everything to work perfectly!*
+## What is Edu Geyser?
+Edu Geyser is a proxy, bridging the gap between Minecraft: Bedrock Edition, Minecraft: Education Edition, and Minecraft: Java Edition servers.
+The ultimate goal of this project is to allow Minecraft: Education Edition, Bedrock Edition users to join Minecraft: Java Edition servers as seamlessly as possible. However, due to the nature of Edu Geyser translating packets over the network of three different games, *do not expect everything to work perfectly!*
 
 Special thanks to the DragonProxy project for being a trailblazer in protocol translation and for all the team members who have joined us here!
 
@@ -43,6 +44,7 @@ Special thanks to the DragonProxy project for being a trailblazer in protocol tr
 
 | Edition | Supported Versions                                                                                   |
 |---------|------------------------------------------------------------------------------------------------------|
+| Education Edition | 1.21.130 - 1.21.131                                                                        |
 | Bedrock | 1.21.130 - 1.21.132, 26.0, 26.1, 26.2, 26.3, 26.10                                                   |
 | Java    | 1.21.11 (For older versions, [see this guide](https://geysermc.org/wiki/geyser/supported-versions/)) |
 
