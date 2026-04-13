@@ -1,4 +1,5 @@
 <img src="https://res.cloudinary.com/dnqnmpfbt/image/upload/v1776060273/Edugeyser_logo_with_vibrant_geyser_burst_tem6rz.png" alt="Edu Geyser" width="600"/>
+
 # Edu Geyser
 
 A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Education Edition** clients to join **Java Edition** servers. Both Education and regular Bedrock players can connect to the same server simultaneously.
