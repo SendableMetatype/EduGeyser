@@ -1,5 +1,5 @@
-# Edu<img width="1810" height="869" alt="Edugeyser logo with vibrant geyser burst" src="https://github.com/user-attachments/assets/39b86e80-6697-4a2e-8307-f5e2a53e8b96" />
-Geyser
+<img src="https://res.cloudinary.com/dnqnmpfbt/image/upload/v1776060273/Edugeyser_logo_with_vibrant_geyser_burst_tem6rz.png" alt="Edu Geyser" width="600"/>
+# Edu Geyser
 
 A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Education Edition** clients to join **Java Edition** servers. Both Education and regular Bedrock players can connect to the same server simultaneously.
 
@@ -23,8 +23,6 @@ Pre-built jars are available on the [Releases](https://github.com/SendableMetaty
 - **[Master Documentation](https://github.com/SendableMetatype/EduGeyser/blob/full/edugeyser-master-documentation.md)** - Authentication flow, protocol differences, and MESS API details
 
 ---
-
-<img src="https://res.cloudinary.com/dnqnmpfbt/image/upload/v1776060273/Edugeyser_logo_with_vibrant_geyser_burst_tem6rz.png" alt="Edu Geyser" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/613163671870242838.svg?color=%237289da&label=discord)](https://discord.gg/geysermc)
