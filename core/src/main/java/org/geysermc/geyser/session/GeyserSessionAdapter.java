@@ -149,9 +149,9 @@ public class GeyserSessionAdapter extends SessionAdapter {
             // Set what our UUID *probably* is going to be
             if (session.remoteServer().authType() == AuthType.FLOODGATE) {
                 if (session.isEducationClient()) {
-                    // Use the tenant ID extracted from EduTokenChain, NOT clientData.getTenantId()
-                    String tenantId = session.getEducationTenantId() != null ? session.getEducationTenantId() : "";
-                    uuid = createEducationUuid(tenantId, session.bedrockUsername());
+                    // Education clients are guaranteed to have a verified tenant ID at this point
+                    // (LoginEncryptionUtils rejects them otherwise).
+                    uuid = createEducationUuid(session.getEducationTenantId(), session.bedrockUsername());
                 } else {
                     uuid = new UUID(0, Long.parseLong(session.xuid()));
                 }

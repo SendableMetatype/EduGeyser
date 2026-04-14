@@ -129,26 +129,17 @@ public class LoginEncryptionUtils {
                 String eduTokenChain = data.getEduTokenChain();
                 String serverToken = extractServerTokenFromEduTokenChain(eduTokenChain);
 
-                if (serverToken != null) {
-                    String[] tokenParts = serverToken.split("\\|");
-                    if (tokenParts.length >= 4) {
-                        session.setEducationTenantId(tokenParts[0]);
-
-                        // Verify the MESS signature on the server token
-                        if (!verifyEducationServerToken(serverToken)) {
-                            geyser.getLogger().warning("[EduAuth] Rejected: invalid MESS signature on server token");
-                            session.disconnect("Education Edition Connection Failed\n\nYour education token could not be verified.");
-                            return;
-                        }
-
-                        // Store the verified token for echoing back in the handshake
-                        session.setEducationServerToken(serverToken);
-                        geyser.getLogger().debug("[EduAuth] Education client verified: tenant=%s, oid=%s",
-                                tokenParts[0], tokenParts[1]);
-                    }
-                } else {
-                    geyser.getLogger().debug("[EduAuth] Education client connected without EduTokenChain");
+                // A valid MESS signature implies a well-formed tenantId|oid|expiry|sig structure,
+                // since MESS only signs that exact format. Reject silently — no logging, to
+                // prevent log amplification from spammed invalid tokens.
+                if (serverToken == null || !verifyEducationServerToken(serverToken)) {
+                    session.disconnect("Education Edition Connection Failed\n\nYour education token could not be verified.");
+                    return;
                 }
+
+                String[] tokenParts = serverToken.split("\\|");
+                session.setEducationTenantId(tokenParts[0]);
+                session.setEducationServerToken(serverToken);
             }
 
             IdentityData extraData = result.identityClaims().extraData;
