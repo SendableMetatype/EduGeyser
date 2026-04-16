@@ -222,8 +222,7 @@ public class BlockBreakHandler {
 
                     handleStartBreak(position, state, Direction.getUntrusted(actionData, PlayerBlockActionData::getFace), packet.getTick());
                 }
-                case BLOCK_CONTINUE_DESTROY, CONTINUE_BREAK -> {
-                    // Education Edition sends CONTINUE_BREAK instead of BLOCK_CONTINUE_DESTROY
+                case BLOCK_CONTINUE_DESTROY -> {
                     if (testForItemFrameEntity(position) || testForLastBreakPosOrReset(position) || abortDueToBlockRestoring(position)) {
                         continue;
                     }
@@ -285,7 +284,7 @@ public class BlockBreakHandler {
 
                     handlePredictDestroy(position, state, Direction.getUntrusted(actionData, PlayerBlockActionData::getFace), packet.getTick());
                 }
-                case ABORT_BREAK, STOP_BREAK -> {
+                case ABORT_BREAK -> {
                     // Also handles item frame interactions in adventure mode
                     if (testForItemFrameEntity(position)) {
                         continue;

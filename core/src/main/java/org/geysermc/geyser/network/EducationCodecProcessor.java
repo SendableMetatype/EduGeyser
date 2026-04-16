@@ -31,8 +31,8 @@ import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 /**
  * Produces an education-aware codec from the base processed codec.
  * Swaps the StartGamePacket serializer to append the 3 education-specific
- * string fields (eduSharedUri) required for Education Edition clients to
- * load the world.
+ * string fields (educationReferrerId, educationCreatorWorldId, educationCreatorId)
+ * required for Education Edition clients to load the world.
  */
 public final class EducationCodecProcessor {
 
@@ -45,7 +45,6 @@ public final class EducationCodecProcessor {
      * @param codec the base processed codec (from {@link CodecProcessor#processCodec})
      * @return a new codec with the education StartGamePacket serializer
      */
-    @SuppressWarnings("unchecked")
     public static BedrockCodec educationCodec(BedrockCodec codec) {
         return codec.toBuilder()
             .updateSerializer(StartGamePacket.class, EducationStartGameSerializer.INSTANCE)

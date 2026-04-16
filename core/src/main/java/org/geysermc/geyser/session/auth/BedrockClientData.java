@@ -135,6 +135,13 @@ public final class BedrockClientData {
      */
     @SerializedName(value = "TenantId")
     private String tenantId;
+    /**
+     * The Active Directory role reported by the client (0 = student, 1 = teacher).
+     * <p>
+     * <b>This value is client-controlled and not cryptographically verified.</b>
+     * It is forwarded to Floodgate as context only. Do not use it for authorization
+     * decisions — any education client can set this field to any value.
+     */
     @SerializedName(value = "ADRole")
     private int adRole;
 
