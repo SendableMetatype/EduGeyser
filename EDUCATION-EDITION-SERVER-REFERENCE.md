@@ -23,7 +23,11 @@ All findings are from observation of real client/server traffic and reverse engi
 13. [Netty Classpath in Geyser Extensions](#13-netty-classpath-in-geyser-extensions)
 14. [Nethernet Long-Running Failure Modes](#14-nethernet-long-running-failure-modes)
 15. [Education-Specific Protocol Fields](#15-education-specific-protocol-fields)
-16. [Open Questions](#16-open-questions)
+16. [EDUTOKEN Dynamic Fields](#16-edutoken-dynamic-fields)
+17. [Education-Specific Bedrock Packets](#17-education-specific-bedrock-packets)
+18. [Education Skin Handling](#18-education-skin-handling)
+19. [Compression Strategy Differences](#19-compression-strategy-differences)
+20. [Open Questions](#20-open-questions)
 
 ---
 
@@ -889,11 +893,98 @@ Education clients check a `codebuilder` gamerule. When true, the "Code" button a
 - Current preview: **1.21.131.1 Preview**
 - Legacy branch: 1.21.93 (2025-10-30), 1.21.92, 1.21.91 "Chase the Clouds", 1.21.10 (2025-03-22)
 
-Protocol version for 1.21.132 matches Bedrock protocol v898 family, but with the StartGamePacket difference above.
+Protocol version mapping:
+- **1.21.10** → Bedrock protocol **v685** (per mcedu-docs, which target this version)
+- **1.21.132** → Bedrock protocol **v898** (same family as Bedrock 1.21.130–1.21.132)
+
+Education typically lags Bedrock by one protocol generation. The v898 codec works for 1.21.132 education clients when extended with the 3 extra StartGamePacket strings above.
+
+### Codec compatibility for Bedrock redirect servers
+
+When writing a Nethernet redirect handler that hands off to a real RakNet listener via `TransferPacket`, you can be lenient about the client's claimed protocol version in the `RequestNetworkSettings` packet. The redirect only needs to:
+
+1. Respond with `NetworkSettings` (compression negotiation)
+2. Accept `Login` and send back a `ServerToClientHandshake` with the echoed MESS token
+3. Send `PlayStatus(LOGIN_SUCCESS)`, `ResourcePacksInfo`, `ResourcePackStack`
+4. Send `StartGame` (with the 3 extra edu strings) and `Transfer`
+
+Clients with any protocol version can be accepted as long as the basic packet formats (Login, Handshake, PlayStatus, Transfer) haven't changed — they're stable across versions. Strict protocol version matching during the redirect handshake causes unnecessary rejections.
 
 ---
 
-## 16. Open Questions
+## 16. EDUTOKEN Dynamic Fields
+
+The MESS-issued EDUTOKEN JWT (distinct from the servertoken in `EduTokenChain`, though issued by related services) carries runtime configuration values the client uses. Observed fields from mcedu-docs:
+
+- **`discovery.heartbeatFrequencyS`** — how often the client expects heartbeats to keep its Discovery registration alive. Server implementations should use this value as the heartbeat cadence. If unparseable/missing, 100 seconds is a safe default.
+- **`joinCodeLength`** — controls how many symbols Discovery will issue in new passcodes (4, 5, or 6 observed). The server doesn't control this; Discovery picks.
+- **`nethernetDisabled`** — boolean flag. When true, the client skips Nethernet-based features entirely.
+
+These values come from the client's MESS session, not the server. A server implementation can read them to know how to behave but cannot override them.
+
+## 17. Education-Specific Bedrock Packets
+
+Packet types that exist in Education Edition's protocol but NOT in regular Bedrock. Java servers (via Geyser) typically ignore or NOP these to prevent "illegal packet" disconnects:
+
+- **`EducationSettingsPacket`** — carries tenant/teacher configuration. Can be sent as an empty-default packet.
+- **`EduCodePacket`** — Code Builder related. Never sent by Java-side (we disable Code Builder via gamerule).
+- **`LabTablePacket`** — chemistry/lab feature.
+- **`PhotoTransferPacket`** / **`PhotoInfoRequestPacket`** — in-game camera/photo feature.
+- **`PurchaseReceiptPacket`** — handled but not relevant for edu.
+
+### Code Builder suppression
+
+Education clients check a `codebuilder` gamerule. Default is `true`, which makes the "Code" button appear in the pause menu. Clicking it initiates Code Builder packet exchanges that a Java server cannot respond to, leading to disconnect. Send `codebuilder=false` in `StartGamePacket`'s game rules list to suppress the button.
+
+### `EducationProductionId` field
+
+`StartGamePacket` has an `educationProductionId` field (string). Empty string (`""`) is accepted. The field's purpose is unverified but it's part of the StartGame level settings for education clients specifically.
+
+## 18. Education Skin Handling
+
+Education players' skins cannot be uploaded to the standard Bedrock skin pipeline because their login chain fails cryptographic validation at the Mojang/XBL skin service (Global API). The login chain is self-signed, so Global API rejects it.
+
+### Signing relay pattern
+
+A third-party signing relay re-signs the skin data + fabricated chain data so it passes Global API validation. The flow:
+
+1. Server extracts raw skin bytes + geometry from client's `BedrockClientData`
+2. Server POSTs to signing relay's `/sign` endpoint with `original_string` (the full client data JWT)
+3. Relay returns:
+   - `chain_data` — valid Mojang-style signed chain (with placeholder identity)
+   - `client_data` — re-signed client data
+   - `hash` — SHA-256 of the skin RGBA bytes
+4. Server uploads the signed chain+client_data to Global API's WebSocket
+5. Server stores the hash on the session for later matching
+
+### Skin event matching
+
+Global API's skin upload completes asynchronously via a WebSocket event. For regular Bedrock, matching is by XUID. For education, the XUID is an OID string (not a numeric XUID), so XUID-based lookup fails.
+
+Fallback: match education `SKIN_UPLOADED` events by skin hash. The server iterates online education sessions and finds the one whose `educationSkinHash` matches the event's hash, then binds the uploaded skin to that session.
+
+### Global API bedrock_id incompatibility
+
+Floodgate's "global linking" feature (Bedrock ↔ Java account linking) stores `bedrock_id` as an integer in the global database. Education OIDs are UUID strings, not integers, and cannot be stored in this field. Floodgate correctly skips global linking for education players.
+
+If global linking support for education is ever needed, it would require a Global API schema change to accept UUID-format identities, and routing by OID rather than xuid integer.
+
+### Queue delay
+
+Global API processes skin uploads asynchronously. New education players see the default Steve/Alex skin until their skin completes processing. After the first successful upload for a given OID, cached results mean subsequent joins are immediate on the same server — but switching servers requires re-priming.
+
+## 19. Compression Strategy Differences
+
+RakNet (standard Bedrock) and Nethernet (WebRTC-based) differ in how they wrap packets:
+
+- **RakNet**: standard zlib (`PacketCompressionAlgorithm.ZLIB`) with per-batch wrapping. Prefixed with a 1-byte compression-algorithm header on protocol v649+.
+- **Nethernet**: raw zlib (`Zlib.RAW` — no zlib header/footer). Same prefix byte semantics on v649+.
+
+If you're building a Nethernet-aware pipeline, the compression codec must use the raw flavor; regular zlib will fail to decompress frames from Education clients. The cloudburstmc `ZlibCompression(Zlib.RAW)` option exists for this purpose.
+
+Threshold behavior: both sides typically use a small threshold (e.g. 1 byte) meaning everything above trivial size gets compressed. `NetworkSettingsPacket` negotiation sets this on the initial handshake.
+
+## 20. Open Questions
 
 ### Does Discovery `/update` accept a new `networkId`?
 
