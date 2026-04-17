@@ -9,7 +9,7 @@ A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Edu
 - Verified player identity via Microsoft Education Services
 - Education player skins visible to Java players via the [EduGeyser Signing Relay](https://github.com/SendableMetatype/EduGeyser-Signing-Relay)
 - [Floodgate](https://github.com/SendableMetatype/EduFloodgate) integration with education-specific UUIDs and username formatting
-- Optional [server list broadcasting](https://github.com/SendableMetatype/Geyser-Education-Extension) for schools that want their server to appear in Education Edition's built-in server browser
+- Optional [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) adding server list broadcasting, join codes, and direct connection IDs for easier student access
 
 ## Downloads
 
