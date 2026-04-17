@@ -144,7 +144,14 @@ public final class FloodgateSkinUploader {
 
                                 byte[] bytes = (value + '\0' + signature)
                                         .getBytes(StandardCharsets.UTF_8);
-                                PluginMessageUtils.sendMessage(session, PluginMessageChannels.SKIN, bytes);
+                                // Delay the plugin message to work around PaperMC/Velocity#1766:
+                                // messages sent while the proxy's getConnectedServer() is null
+                                // during the join window are silently dropped. A cached skin
+                                // response can arrive inside that window, causing the player
+                                // to appear as Steve. Deferring the send past the window fixes it.
+                                geyser.getScheduledThread().schedule(
+                                        () -> PluginMessageUtils.sendMessage(session, PluginMessageChannels.SKIN, bytes),
+                                        5, TimeUnit.SECONDS);
                             }
                             break;
                         case LOG_MESSAGE:
