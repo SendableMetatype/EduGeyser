@@ -253,8 +253,10 @@ public class GeyserSessionAdapter extends SessionAdapter {
 
     /**
      * Generate a stable, unique UUID for education players from their Entra OID.
-     * The OID is a UUID v4 assigned by Microsoft — cryptographically signed in
-     * the MESS token, immutable, and unique per user per tenant.
+     * The OID is a UUID v4 assigned by Microsoft to an Entra account. It is
+     * cryptographically signed in the MESS token, immutable, and globally unique.
+     * A person with multiple Entra accounts has multiple OIDs, the same way a
+     * person with multiple Xbox accounts has multiple xuids.
      *
      * MSB is fixed so education UUIDs are distinguishable from Bedrock (MSB=0)
      * and Java (random v4). LSB is 64 purely random bits extracted from the OID

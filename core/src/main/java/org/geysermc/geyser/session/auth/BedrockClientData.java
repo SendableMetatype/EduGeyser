@@ -140,7 +140,7 @@ public final class BedrockClientData {
      * <p>
      * <b>This value is client-controlled and not cryptographically verified.</b>
      * It is forwarded to Floodgate as context only. Do not use it for authorization
-     * decisions — any education client can set this field to any value.
+     * decisions since any education client can set this field to any value.
      */
     @SerializedName(value = "ADRole")
     private int adRole;

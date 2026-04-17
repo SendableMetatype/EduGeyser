@@ -257,7 +257,7 @@ public class LoginEncryptionUtils {
      * <p>
      * The outer JWT's signature is intentionally NOT verified here. Education login chains
      * are self-signed with an ephemeral client key, so verifying the outer signature proves
-     * only that the client signed its own JWT — not anything about identity. Only the inner
+     * only that the client signed its own JWT. It proves nothing about identity. Only the inner
      * {@code chain} field is load-bearing, and it carries its own MESS RSA signature which
      * is verified separately by {@link #verifyEducationServerToken}. Do not extend this
      * method to read any other field from the outer JWT without adding dedicated verification.
@@ -321,7 +321,7 @@ public class LoginEncryptionUtils {
             return TokenVerifyResult.INVALID;
         }
 
-        // Matches the client's check: parsed_expiry < now → expired.
+        // Matches the client's check. Expired if parsed_expiry is before now.
         // Failed-to-parse also treated as expired (client forces value to 0 on parse failure).
         try {
             Instant expiry = Instant.parse(parts[2]);

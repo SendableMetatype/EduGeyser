@@ -116,7 +116,7 @@ class EducationUuidTest {
         String v5 = "aaaaaaaa-bbbb-5ccc-cddd-eeeeeeeeeeee"; // version=5, variant=c (11xx)
         UUID a = GeyserSessionAdapter.createEducationUuid(v4);
         UUID b = GeyserSessionAdapter.createEducationUuid(v5);
-        assertEquals(a, b, "Version/variant bits should be stripped — same random bits should produce same UUID");
+        assertEquals(a, b, "Stripping version/variant bits should yield the same UUID when random bits match");
     }
 
     @Test

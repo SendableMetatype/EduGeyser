@@ -126,7 +126,7 @@ public final class FloodgateSkinUploader {
                             subscribersCount = node.get("subscribers_count").getAsInt();
                             break;
                         case SKIN_UPLOADED:
-                            // Normal Bedrock path — only when Geyser is the sole handler
+                            // Normal Bedrock path. Runs only when Geyser is the sole handler.
                             if (subscribersCount <= 1) {
                                 String xuid = node.get("xuid").getAsString();
                                 GeyserSession session = geyser.connectionByXuid(xuid);
@@ -149,8 +149,8 @@ public final class FloodgateSkinUploader {
                                 }
                             }
 
-                            // Education fallback — always runs regardless of subscribersCount
-                            // Floodgate has no education hash matching, so Geyser must handle it
+                            // Education fallback. Runs regardless of subscribersCount because
+                            // Floodgate has no education hash matching, so Geyser must handle it.
                             if (node.get("success").getAsBoolean()) {
                                 JsonObject data = node.getAsJsonObject("data");
                                 String skinHash = data.get("hash").getAsString();

@@ -1853,7 +1853,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setScenarioId("");
         startGamePacket.setOwnerId("");
 
-        // Disable Code Builder for education clients — it's unsupported on Java servers
+        // Disable Code Builder for education clients. It's unsupported on Java servers
         // and would cause an illegal packet disconnect if the client opens it.
         if (educationClient) {
             startGamePacket.getGamerules().add(new GameRuleData<>("codebuilder", false));
