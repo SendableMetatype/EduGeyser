@@ -25,9 +25,8 @@
 
 package org.geysermc.geyser.util;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import net.raphimc.minecraftauth.msa.model.MsaDeviceCode;
+import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.data.auth.AuthPayload;
 import org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload;
 import org.cloudburstmc.protocol.bedrock.data.auth.TokenPayload;
@@ -35,6 +34,7 @@ import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ServerToClientHandshakePacket;
 import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult;
 import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult.IdentityData;
+import org.cloudburstmc.protocol.bedrock.util.EducationTokenValidationResult;
 import org.cloudburstmc.protocol.bedrock.util.EncryptionUtils;
 import org.geysermc.cumulus.form.ModalForm;
 import org.geysermc.cumulus.form.SimpleForm;
@@ -42,72 +42,22 @@ import org.geysermc.cumulus.response.SimpleFormResponse;
 import org.geysermc.cumulus.response.result.FormResponseResult;
 import org.geysermc.cumulus.response.result.ValidFormResponseResult;
 import org.geysermc.geyser.GeyserImpl;
+import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.auth.AuthData;
 import org.geysermc.geyser.session.auth.BedrockClientData;
 import org.geysermc.geyser.text.ChatColor;
 import org.geysermc.geyser.text.GeyserLocale;
-import org.jose4j.jws.JsonWebSignature;
-import org.jose4j.jwt.JwtClaims;
+import org.jose4j.lang.JoseException;
 
 import javax.crypto.SecretKey;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PublicKey;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
-import java.util.Base64;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 
 public class LoginEncryptionUtils {
     private static boolean HAS_SENT_ENCRYPTION_MESSAGE = false;
-
-    /**
-     * MESS (Minecraft Education Server Services) RSA-1024 public key for verifying server tokens.
-     * Retrieved from https://dedicatedserver.minecrafteduservices.com/public_keys/signing
-     * Used to verify the signature on pipe-separated server tokens: tenantId|oid|expiry|signature
-     * <p>
-     * Hardcoded as a trust anchor, mirroring how CloudburstMC's {@link EncryptionUtils} handles
-     * Mojang's root key. If Microsoft rotates the MESS key, edu auth will fail until this value
-     * is updated and a new release is shipped.
-     */
-    private static final String MESS_SIGNING_KEY_BASE64 =
-            "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDsFCr3nD8N3TJxJZ7Y4g1Z20Son+fUWTSd2f" +
-            "/XyIil2mGGGx/yjRj6l0ntbROsec8MZoaLsBG0nWm9/WhJcdXvJewbdd+mCyy7WXyYQgJcJPZP" +
-            "3kgBDySZMUnaowlUmR9gxRr+LevCafZKQwb19nwJB0EUt+nQsWBbTe2SuIdCqQIDAQAB";
-
-    /**
-     * Parsed MESS public key, cached once at class load. The key is hardcoded and
-     * never changes at runtime; reconstructing it per-verification is wasted work
-     * and inflates the CPU cost of rejecting flooded/invalid login attempts.
-     */
-    private static final PublicKey MESS_SIGNING_KEY;
-    static {
-        try {
-            byte[] keyBytes = Base64.getDecoder().decode(MESS_SIGNING_KEY_BASE64);
-            MESS_SIGNING_KEY = KeyFactory.getInstance("RSA")
-                    .generatePublic(new X509EncodedKeySpec(keyBytes));
-        } catch (Exception e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
-
-    /**
-     * Outcome of {@link #verifyEducationServerToken(String)}.
-     */
-    private enum TokenVerifyResult {
-        /** Signature is valid and the token has not expired. */
-        VALID,
-        /** Signature is valid but the MESS-signed expiry timestamp is in the past. */
-        EXPIRED,
-        /** Token is null, malformed, or the signature did not verify. */
-        INVALID
-    }
 
     public static void encryptPlayerConnection(GeyserSession session, LoginPacket loginPacket) {
         encryptConnectionWithCert(session, loginPacket.getAuthPayload(), loginPacket.getClientJwt());
@@ -162,16 +112,20 @@ public class LoginEncryptionUtils {
                 return;
             }
 
-            // Handle Education Edition: extract and verify the MESS-signed server token
+            // Handle Education Edition: verify the MESS-signed server token echoed in the EduTokenChain JWT
             if (isEducationClient) {
                 session.setEducationClient(true);
 
-                // Extract the server token from the EduTokenChain JWT
                 String eduTokenChain = data.getEduTokenChain();
-                String serverToken = extractServerTokenFromEduTokenChain(eduTokenChain);
+                String serverToken;
+                try {
+                    serverToken = EncryptionUtils.extractServerTokenFromEduTokenChain(eduTokenChain);
+                } catch (JoseException e) {
+                    serverToken = null;
+                }
+                EducationTokenValidationResult tokenResult = EncryptionUtils.validateEducationToken(serverToken);
 
-                TokenVerifyResult verifyResult = verifyEducationServerToken(serverToken);
-                if (verifyResult == TokenVerifyResult.EXPIRED) {
+                if (tokenResult.getStatus() == EducationTokenValidationResult.Status.EXPIRED) {
                     // 10-day tokens commonly expire while the client is still running
                     // (e.g. a student leaves their Chromebook logged in for 2+ weeks).
                     // Tell them exactly what to do instead of a generic auth-failure.
@@ -179,16 +133,24 @@ public class LoginEncryptionUtils {
                     session.disconnect("Your Education Edition session has expired.\n\nPlease fully restart Minecraft Education Edition and try again.");
                     return;
                 }
-                if (verifyResult != TokenVerifyResult.VALID) {
+                if (tokenResult.getStatus() != EducationTokenValidationResult.Status.VALID) {
                     geyser.getLogger().debug("MESS token verification failed for " + session.bedrockUsername());
                     session.disconnect("Education Edition Connection Failed\n\nYour education token could not be verified.");
                     return;
                 }
 
-                // Split is safe here: verifyEducationServerToken guarantees exactly 4 fields on VALID.
-                String[] tokenParts = serverToken.split("\\|", -1);
-                session.setEducationTenantId(tokenParts[0]);
+                session.setEducationTenantId(tokenResult.getTenantId());
                 session.setEducationServerToken(serverToken);
+
+                // Swap to the education codec now that we know this is an education session.
+                // The codec differs from the standard one only in StartGamePacket serialization,
+                // but encoding is deferred to Netty's event loop so we can't safely swap
+                // temporarily just for StartGame; it has to be permanent from here on.
+                BedrockCodec educationCodec = GameProtocol.getEducationCodec(
+                        session.getUpstream().getSession().getCodec().getProtocolVersion());
+                if (educationCodec != null) {
+                    session.getUpstream().getSession().setCodec(educationCodec);
+                }
             }
 
             IdentityData extraData = result.identityClaims().extraData;
@@ -233,23 +195,8 @@ public class LoginEncryptionUtils {
         KeyPair serverKeyPair = EncryptionUtils.createKeyPair();
         byte[] token = EncryptionUtils.generateRandomToken();
 
-        String jwt;
-        if (session.isEducationClient() && session.getEducationServerToken() != null) {
-            // Education: echo the client's MESS-signed server token back in the handshake JWT
-            JsonWebSignature jws = new JsonWebSignature();
-            jws.setAlgorithmHeaderValue("ES384");
-            jws.setHeader("x5u", Base64.getEncoder().encodeToString(
-                serverKeyPair.getPublic().getEncoded()));
-            jws.setKey(serverKeyPair.getPrivate());
-
-            JwtClaims claims = new JwtClaims();
-            claims.setClaim("salt", Base64.getEncoder().encodeToString(token));
-            claims.setClaim("signedToken", session.getEducationServerToken());
-            jws.setPayload(claims.toJson());
-            jwt = jws.getCompactSerialization();
-        } else {
-            jwt = EncryptionUtils.createHandshakeJwt(serverKeyPair, token);
-        }
+        String signedToken = session.isEducationClient() ? session.getEducationServerToken() : null;
+        String jwt = EncryptionUtils.createHandshakeJwt(serverKeyPair, token, signedToken);
 
         SecretKey encryptionKey = EncryptionUtils.getSecretKey(serverKeyPair.getPrivate(), key, token);
 
@@ -257,108 +204,6 @@ public class LoginEncryptionUtils {
         packet.setJwt(jwt);
         session.sendUpstreamPacketImmediately(packet);
         session.getUpstream().getSession().enableEncryption(encryptionKey);
-    }
-
-    /**
-     * Extract the pipe-separated server token from the client's EduTokenChain JWT.
-     * <p>
-     * The outer JWT's signature is intentionally NOT verified here. Education login chains
-     * are self-signed with an ephemeral client key, so verifying the outer signature proves
-     * only that the client signed its own JWT. It proves nothing about identity. Only the inner
-     * {@code chain} field is load-bearing, and it carries its own MESS RSA signature which
-     * is verified separately by {@link #verifyEducationServerToken}. Do not extend this
-     * method to read any other field from the outer JWT without adding dedicated verification.
-     */
-    private static String extractServerTokenFromEduTokenChain(String eduTokenChain) {
-        if (eduTokenChain == null || eduTokenChain.isEmpty()) {
-            return null;
-        }
-        try {
-            String[] jwtParts = eduTokenChain.split("\\.");
-            if (jwtParts.length < 2) {
-                return null;
-            }
-            // Base64.getUrlDecoder() accepts unpadded input; JWT payloads are always unpadded per RFC 7515.
-            String payloadJson = new String(Base64.getUrlDecoder().decode(jwtParts[1]), StandardCharsets.UTF_8);
-            JsonObject payload = JsonParser.parseString(payloadJson).getAsJsonObject();
-            if (!payload.has("chain")) {
-                return null;
-            }
-            String chain = payload.get("chain").getAsString();
-            String[] parts = chain.split("\\|");
-            if (parts.length < 4) {
-                return null;
-            }
-            return chain;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Verify the MESS signature on an education server token and enforce its expiry.
-     * <p>
-     * Token format: {@code tenantId|oid|expiry|hexSignature} where expiry is an
-     * ISO 8601 UTC timestamp and signature is RSA PKCS#1 v1.5 with SHA-256 over
-     * {@code tenantId|oid|expiry} using the MESS signing key.
-     * <p>
-     * The expiry check mirrors the Education client exactly: {@code parsed_expiry < now}
-     * is expired, and a timestamp that fails to parse is treated as expired (the client
-     * forces it to epoch 0 on parse failure).
-     */
-    private static TokenVerifyResult verifyEducationServerToken(String serverToken) {
-        if (serverToken == null) {
-            return TokenVerifyResult.INVALID;
-        }
-        String[] parts = serverToken.split("\\|", -1);
-        if (parts.length != 4) {
-            return TokenVerifyResult.INVALID;
-        }
-        try {
-            String signedData = parts[0] + "|" + parts[1] + "|" + parts[2];
-            byte[] signatureBytes = hexToBytes(parts[3]);
-
-            Signature sig = Signature.getInstance("SHA256withRSA");
-            sig.initVerify(MESS_SIGNING_KEY);
-            sig.update(signedData.getBytes(StandardCharsets.UTF_8));
-            if (!sig.verify(signatureBytes)) {
-                return TokenVerifyResult.INVALID;
-            }
-        } catch (Exception e) {
-            return TokenVerifyResult.INVALID;
-        }
-
-        // Matches the client's check. Expired if parsed_expiry is before now.
-        // Failed-to-parse also treated as expired (client forces value to 0 on parse failure).
-        try {
-            Instant expiry = Instant.parse(parts[2]);
-            if (Instant.now().isAfter(expiry)) {
-                return TokenVerifyResult.EXPIRED;
-            }
-        } catch (DateTimeParseException e) {
-            return TokenVerifyResult.EXPIRED;
-        }
-
-        // Enforce UUID shape on tenantId and oid at the verification boundary so any
-        // unexpected MESS output fails here rather than at UUID generation mid-session.
-        try {
-            UUID.fromString(parts[0]);
-            UUID.fromString(parts[1]);
-        } catch (IllegalArgumentException e) {
-            return TokenVerifyResult.INVALID;
-        }
-        return TokenVerifyResult.VALID;
-    }
-
-    private static byte[] hexToBytes(String hex) {
-        if ((hex.length() & 1) != 0) {
-            throw new IllegalArgumentException("odd-length hex string");
-        }
-        byte[] bytes = new byte[hex.length() / 2];
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-        }
-        return bytes;
     }
 
     private static void sendEncryptionFailedMessage(GeyserImpl geyser) {

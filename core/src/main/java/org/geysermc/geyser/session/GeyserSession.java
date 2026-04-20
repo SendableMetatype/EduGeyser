@@ -155,7 +155,6 @@ import org.geysermc.geyser.item.type.BlockItem;
 import org.geysermc.geyser.level.BedrockDimension;
 import org.geysermc.geyser.level.JavaDimension;
 import org.geysermc.geyser.level.physics.CollisionManager;
-import org.geysermc.geyser.network.EducationCodecProcessor;
 import org.geysermc.geyser.network.netty.LocalSession;
 import org.geysermc.geyser.registry.Registries;
 import org.geysermc.geyser.registry.type.BlockMappings;
@@ -1859,17 +1858,6 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
             startGamePacket.getGamerules().add(new GameRuleData<>("codebuilder", false));
         }
 
-        // For Education clients, set the education codec permanently for this session.
-        // It only differs in StartGamePacket serialization (appends 3 extra edu strings);
-        // all other packets use identical serializers. Encoding is deferred to Netty's
-        // event loop, so we can't swap temporarily; it must stay active.
-        if (educationClient) {
-            upstream.getSession().setCodec(EducationCodecProcessor.educationCodec(upstream.getSession().getCodec()));
-            // setCodec() creates a new codec helper, wiping registries. Re-set them.
-            upstream.getCodecHelper().setItemDefinitions(this.itemMappings);
-            upstream.getCodecHelper().setBlockDefinitions(this.blockMappings);
-            upstream.getCodecHelper().setCameraPresetDefinitions(CameraDefinitions.CAMERA_DEFINITIONS);
-        }
         upstream.sendPacket(startGamePacket);
     }
 
