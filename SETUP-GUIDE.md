@@ -53,17 +53,17 @@ That's it. Education clients can now connect. No tokens, no configuration, no ad
 
 ## How Students Connect
 
-Education Edition does not natively have a server list for direct IP connections. There are two ways for students to connect:
+Education Edition does not natively have a server list for direct IP connections. There are several ways for students to connect:
 
 ### Connection Link (Quickest)
 
 Share this link with students. They click it and Education Edition opens and connects directly:
 
 ```
-minecraftedu://connect/?serverUrl=YOUR_SERVER_IP:19132
+minecraftedu://connect/?serverUrl=YOUR_SERVER_IP&serverPort=19132
 ```
 
-The included [`join-server.html`](education-tools/join-server.html) page makes this easy - edit the IP and share the file. Students click the button and connect.
+The [EduGeyser connection page](https://sendablemetatype.github.io/join/) makes this easy - share the link with students, they enter the server IP and port, and click Join. Education Edition launches and connects directly. Students can also save servers for quick access later.
 
 The downside: this is a one-time connection. Students need the link again each time they want to rejoin. For repeated use, the resource pack is better.
 
@@ -81,11 +81,15 @@ The included **EduGeyser Server List resource pack** adds a permanent **Servers*
 
 ---
 
-## Server List Broadcasting (Optional)
+## Geyser Education Extension (Optional)
 
-If you want your server to appear automatically in Education Edition's built-in server browser (so students don't need to enter an IP at all), install the [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension).
+The [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) adds three additional ways for students to find and join your server:
 
-This is completely optional and requires a Global Admin account for each M365 Education tenant you want to broadcast to. See the extension's README for setup instructions.
+- **Join Codes** — Students enter a code in Education Edition's built-in "Join Code" screen, or click a share link. No IP address needed. Any M365 Education account can create codes.
+- **Connection ID** — A single 10-digit number that students enter directly in Education Edition's connection dialog. Works across all tenants, so students from different schools can join with the same ID.
+- **Server List Broadcasting** — Your server appears automatically in Education Edition's built-in server browser. Requires Global Admin access to each M365 Education tenant you want to broadcast to.
+
+This extension is completely optional. Education support in EduGeyser works out of the box, and students can always connect via direct IP or a connection link. See the extension's README for setup instructions.
 
 ---
 
@@ -96,13 +100,14 @@ EduFloodgate uses a separate prefix for education players to distinguish them fr
 ```yaml
 # In EduFloodgate config.yml:
 education-prefix: "+"
-education-hash: true
 ```
 
 - `education-prefix` - prefix for education player usernames (default: `+`)
-- `education-hash` - appends a 4-character tenant hash to prevent name collisions between students from different schools (default: `true`)
 
-With default settings, an education player named "Mark" from tenant `03b5e7a1-...` would appear as `+Mark7b91`.
+Education Edition usernames often collide (the Entra default format is "FirstnameLastInitial," which is not unique per-user). When two education players with the same display name are online simultaneously, Floodgate appends a `_N` suffix to resolve the collision:
+
+- First "Mark" to join → `+Mark`
+- Second "Mark" to join → `+Mark_2`
 
 ---
 
@@ -112,9 +117,9 @@ With default settings, an education player named "Mark" from tenant `03b5e7a1-..
 
 This usually means the server is not running EduGeyser. Verify you're using the EduGeyser jar, not standard Geyser.
 
-### Education players have weird usernames like `+Mark7b91`
+### Education players have usernames like `+Mark` or `+Mark_2`
 
-This is the education username format: `+` prefix + player name + 4-character tenant hash. The hash distinguishes players from different schools who might share the same name. It is derived from the school's tenant ID. You can disable the hash in EduFloodgate's config by setting `education-hash: false`.
+Education players get a `+` prefix (configurable in EduFloodgate's config). If two education players with the same display name are online at the same time, a `_N` suffix is appended to distinguish them.
 
 ### Regular Bedrock players can't connect anymore
 
@@ -140,7 +145,7 @@ Yes. EduGeyser detects each client type automatically. Both can play together.
 
 ### Do students need to install anything?
 
-No additional software. For the best experience, distribute the server list resource pack so students get a permanent Servers button. Without it, students connect via a one-time link.
+No additional software. Students can connect via a direct IP link. For easier access, the optional [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) provides join codes, a cross-tenant connection ID, and server list broadcasting. A resource pack is also available that adds a permanent Servers button to Education Edition.
 
 ### Is this safe for schools?
 
@@ -168,10 +173,10 @@ Education Edition runs on these platforms, all of which can connect to EduGeyser
 
 | Platform | Connection Methods |
 |----------|-------------------|
-| Windows 10/11 | Resource pack, URI link, server list (with extension) |
-| macOS | Resource pack, URI link, server list (with extension) |
-| iPad / iOS | Resource pack, URI link, server list (with extension) |
-| Chromebook | Resource pack, URI link, server list (with extension) |
-| Android | Resource pack, URI link, server list (with extension) |
+| Windows 10/11 | URI link, resource pack, join code, connection ID, server list (last three with extension) |
+| macOS | URI link, resource pack, join code, connection ID, server list (last three with extension) |
+| iPad / iOS | URI link, resource pack, join code, connection ID, server list (last three with extension) |
+| Chromebook | URI link, resource pack, join code, connection ID, server list (last three with extension) |
+| Android | URI link, resource pack, join code, connection ID, server list (last three with extension) |
 
 The `minecraftedu://connect` URI scheme works on all platforms where Education Edition is installed.

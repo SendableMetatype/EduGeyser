@@ -3,49 +3,87 @@
 <head>
     <title>Join Minecraft Server</title>
     <style>
-        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #2d2d2d; color: white; }
-        .container { text-align: center; }
-        h1 { margin-bottom: 30px; }
-        .input-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-size: 14px; color: #ccc; }
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding-top: 60px; background: #1a1a1a; color: #f0f0f0; overflow-y: auto; }
+        .container { text-align: center; width: 480px; padding-bottom: 60px; }
+        h1 { margin-bottom: 30px; font-size: 32px; }
+        .input-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; font-size: 17px; color: #e0e0e0; }
         input {
-            padding: 12px 16px;
-            font-size: 18px;
+            padding: 14px 18px;
+            font-size: 20px;
             border: 2px solid #555;
             border-radius: 8px;
-            background: #3a3a3a;
-            color: white;
-            width: 280px;
+            background: #2a2a2a;
+            color: #ffffff;
+            width: 360px;
             text-align: center;
             outline: none;
         }
-        input:focus { border-color: #4CAF50; }
-        input::placeholder { color: #777; }
-        .join-btn {
-            display: inline-block;
-            padding: 16px 48px;
-            background: #4CAF50;
+        input:focus { border-color: #66bb6a; }
+        input::placeholder { color: #888; }
+        .btn-row { margin-top: 18px; display: flex; gap: 12px; justify-content: center; }
+        .btn {
+            padding: 16px 36px;
             color: white;
             text-decoration: none;
             font-size: 22px;
             border-radius: 8px;
             border: none;
             cursor: pointer;
-            margin-top: 10px;
         }
-        .join-btn:hover { background: #45a049; }
+        .btn-join { background: #4CAF50; }
+        .btn-join:hover { background: #45a049; }
+        .btn-save { background: #2196F3; }
+        .btn-save:hover { background: #1976D2; }
+
+        .server-list { margin-top: 36px; text-align: left; }
+        .server-list h2 { font-size: 22px; margin-bottom: 16px; text-align: center; color: #e0e0e0; }
+        .server-entry {
+            display: flex;
+            align-items: center;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .server-entry:hover { background: #333333; }
+        .server-info { flex: 1; }
+        .server-name { font-size: 19px; font-weight: bold; color: #ffffff; }
+        .server-addr { font-size: 15px; color: #b0b0b0; margin-top: 3px; }
+        .server-actions { display: flex; gap: 8px; }
+        .server-actions button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            color: white;
+        }
+        .btn-play { background: #4CAF50; }
+        .btn-play:hover { background: #45a049; }
+        .btn-remove { background: #666; }
+        .btn-remove:hover { background: #c62828; }
+        .empty-msg { text-align: center; color: #666; font-size: 14px; padding: 12px; }
+
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 10; }
         .overlay.active { display: flex; }
-        .popup { background: #3a3a3a; border-radius: 12px; padding: 30px 40px; text-align: center; max-width: 400px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
-        .popup h2 { margin-top: 0; font-size: 20px; }
-        .popup p { color: #ccc; font-size: 15px; line-height: 1.5; }
-        .popup .close-btn { margin-top: 15px; padding: 10px 30px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        .popup { background: #2a2a2a; border: 1px solid #444; border-radius: 12px; padding: 30px 40px; text-align: center; max-width: 400px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+        .popup h2 { margin-top: 0; font-size: 24px; color: #ffffff; }
+        .popup p { color: #d0d0d0; font-size: 17px; line-height: 1.5; }
+        .popup .close-btn { margin-top: 15px; padding: 12px 36px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; }
         .popup .close-btn:hover { background: #45a049; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Join a Minecraft Server</h1>
+        <h1>Join a Minecraft Education Server</h1>
+        <div class="input-group">
+            <label for="name">Server Name</label>
+            <input type="text" id="name" placeholder="e.g. My School Server" />
+        </div>
         <div class="input-group">
             <label for="ip">Server IP</label>
             <input type="text" id="ip" placeholder="e.g. play.example.com" />
@@ -54,25 +92,135 @@
             <label for="port">Port (optional)</label>
             <input type="text" id="port" placeholder="default: 19132" />
         </div>
-        <button class="join-btn" onclick="joinServer()">Click to Join</button>
+        <div class="btn-row">
+            <button class="btn btn-join" onclick="joinServer()">Join</button>
+            <button class="btn btn-save" onclick="saveAndJoin()">Save & Join</button>
+        </div>
+
+        <div class="server-list" id="serverList"></div>
     </div>
+
     <div class="overlay" id="popup">
         <div class="popup">
             <h2>Launching Minecraft...</h2>
-            <p>Minecraft should open automatically. If it doesn't, please open Minecraft manually and connect to the server.</p>
+            <p>Minecraft should open and connect automatically. If it doesn't, please accept the connection in Minecraft.</p>
             <button class="close-btn" onclick="document.getElementById('popup').classList.remove('active')">OK</button>
         </div>
     </div>
+
     <script>
-        function joinServer() {
-            const ip = document.getElementById('ip').value.trim();
-            const port = document.getElementById('port').value.trim();
+        const STORAGE_KEY = 'edugeyser_servers';
+
+        function getServers() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveServers(servers) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
+        }
+
+        function connectTo(ip, port) {
             if (!ip) { alert('Please enter a server IP.'); return; }
             let url = 'minecraftedu://connect/?serverUrl=' + encodeURIComponent(ip);
             if (port) { url += '&serverPort=' + encodeURIComponent(port); }
             window.location.href = url;
             document.getElementById('popup').classList.add('active');
         }
+
+        function joinServer() {
+            connectTo(
+                document.getElementById('ip').value.trim(),
+                document.getElementById('port').value.trim()
+            );
+        }
+
+        function saveAndJoin() {
+            const name = document.getElementById('name').value.trim();
+            const ip = document.getElementById('ip').value.trim();
+            const port = document.getElementById('port').value.trim();
+            if (!ip) { alert('Please enter a server IP.'); return; }
+
+            const servers = getServers();
+            // Update existing entry with the same IP+port, or add new
+            const addr = ip + (port ? ':' + port : '');
+            const existing = servers.findIndex(s => (s.ip + (s.port ? ':' + s.port : '')) === addr);
+            const entry = { name: name || ip, ip: ip, port: port };
+            if (existing >= 0) {
+                servers[existing] = entry;
+            } else {
+                servers.push(entry);
+            }
+            saveServers(servers);
+            renderServerList();
+
+            // Clear inputs
+            document.getElementById('name').value = '';
+            document.getElementById('ip').value = '';
+            document.getElementById('port').value = '';
+
+            connectTo(ip, port);
+        }
+
+        function removeServer(index) {
+            const servers = getServers();
+            servers.splice(index, 1);
+            saveServers(servers);
+            renderServerList();
+        }
+
+        function fillFromServer(index) {
+            const servers = getServers();
+            const s = servers[index];
+            document.getElementById('name').value = s.name || '';
+            document.getElementById('ip').value = s.ip || '';
+            document.getElementById('port').value = s.port || '';
+        }
+
+        function playServer(index, event) {
+            event.stopPropagation();
+            const s = getServers()[index];
+            connectTo(s.ip, s.port);
+        }
+
+        function removeServerClick(index, event) {
+            event.stopPropagation();
+            removeServer(index);
+        }
+
+        function renderServerList() {
+            const servers = getServers();
+            const container = document.getElementById('serverList');
+            if (servers.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            let html = '<h2>Saved Servers</h2>';
+            servers.forEach(function(s, i) {
+                const addr = s.ip + (s.port ? ':' + s.port : ':19132');
+                html += '<div class="server-entry" onclick="fillFromServer(' + i + ')">'
+                    + '<div class="server-info">'
+                    + '<div class="server-name">' + escapeHtml(s.name || s.ip) + '</div>'
+                    + '<div class="server-addr">' + escapeHtml(addr) + '</div>'
+                    + '</div>'
+                    + '<div class="server-actions">'
+                    + '<button class="btn-play" onclick="playServer(' + i + ', event)">Play</button>'
+                    + '<button class="btn-remove" onclick="removeServerClick(' + i + ', event)">Remove</button>'
+                    + '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        renderServerList();
     </script>
 </body>
 </html>
