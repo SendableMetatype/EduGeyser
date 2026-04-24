@@ -153,9 +153,11 @@ public class LoginEncryptionUtils {
                 // one here.
                 BedrockCodec educationCodec = GameProtocol.getEducationCodec(
                         session.getUpstream().getSession().getCodec().getProtocolVersion());
-                if (educationCodec != null) {
-                    session.getUpstream().getSession().setCodec(educationCodec);
+                if (educationCodec == null) {
+                    session.disconnect("Outdated Geyser proxy! This server has not yet been updated to support your Education Edition version.");
+                    return;
                 }
+                session.getUpstream().getSession().setCodec(educationCodec);
             }
 
             IdentityData extraData = result.identityClaims().extraData;
