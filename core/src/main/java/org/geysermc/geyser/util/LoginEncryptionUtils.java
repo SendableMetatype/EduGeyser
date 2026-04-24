@@ -26,6 +26,7 @@
 package org.geysermc.geyser.util;
 
 import net.raphimc.minecraftauth.msa.model.MsaDeviceCode;
+import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.data.auth.AuthPayload;
 import org.cloudburstmc.protocol.bedrock.data.auth.AuthType;
 import org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload;
@@ -34,6 +35,7 @@ import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ServerToClientHandshakePacket;
 import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult;
 import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult.IdentityData;
+import org.cloudburstmc.protocol.bedrock.util.EducationTokenValidationResult;
 import org.cloudburstmc.protocol.bedrock.util.EncryptionUtils;
 import org.geysermc.cumulus.form.ModalForm;
 import org.geysermc.cumulus.form.SimpleForm;
@@ -41,11 +43,13 @@ import org.geysermc.cumulus.response.SimpleFormResponse;
 import org.geysermc.cumulus.response.result.FormResponseResult;
 import org.geysermc.cumulus.response.result.ValidFormResponseResult;
 import org.geysermc.geyser.GeyserImpl;
+import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.auth.AuthData;
 import org.geysermc.geyser.session.auth.BedrockClientData;
 import org.geysermc.geyser.text.ChatColor;
 import org.geysermc.geyser.text.GeyserLocale;
+import org.jose4j.lang.JoseException;
 
 import javax.crypto.SecretKey;
 import java.net.InetSocketAddress;
@@ -73,10 +77,6 @@ public class LoginEncryptionUtils {
             ChainValidationResult result = EncryptionUtils.validatePayload(authPayload);
 
             geyser.getLogger().debug(String.format("Is player data signed? %s", result.signed()));
-            if (!result.signed() && session.getGeyser().config().advanced().bedrock().validateBedrockLogin()) {
-                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.network.remote.invalid_xbox_account"));
-                return;
-            }
 
             // Should always be present, but hey, why not make it safe :D
             Long rawIssuedAt = (Long) result.rawIdentityClaims().get("iat");
@@ -101,8 +101,70 @@ public class LoginEncryptionUtils {
             data.setOriginalString(jwt);
             session.setClientData(data);
 
+            // Education Edition clients use self-signed login chains (no Xbox Live),
+            // so result.signed() is always false for them. We must detect edu clients
+            // before the Xbox validation check to avoid rejecting them.
+            boolean isEducationClient = data.isEducationEdition();
+
+            // Xbox validation: reject unsigned non-edu clients when validation is enabled
+            if (!result.signed() && !isEducationClient && session.getGeyser().config().advanced().bedrock().validateBedrockLogin()) {
+                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.network.remote.invalid_xbox_account"));
+                return;
+            }
+
+            // Handle Education Edition: verify the MESS-signed server token echoed in the EduTokenChain JWT
+            if (isEducationClient) {
+                session.setEducationClient(true);
+
+                String eduTokenChain = data.getEduTokenChain();
+                String serverToken;
+                try {
+                    serverToken = EncryptionUtils.extractServerTokenFromEduTokenChain(eduTokenChain);
+                } catch (JoseException e) {
+                    serverToken = null;
+                }
+                EducationTokenValidationResult tokenResult = EncryptionUtils.validateEducationToken(serverToken);
+
+                if (tokenResult.getStatus() == EducationTokenValidationResult.Status.EXPIRED) {
+                    // 10-day tokens commonly expire while the client is still running
+                    // (e.g. a student leaves their Chromebook logged in for 2+ weeks).
+                    // Tell them exactly what to do instead of a generic auth-failure.
+                    geyser.getLogger().debug("MESS token expired for " + session.bedrockUsername());
+                    session.disconnect("Your Education Edition session has expired.\n\nPlease fully restart Minecraft Education Edition and try again.");
+                    return;
+                }
+                if (tokenResult.getStatus() != EducationTokenValidationResult.Status.VALID) {
+                    geyser.getLogger().debug("MESS token verification failed for " + session.bedrockUsername());
+                    session.disconnect("Education Edition Connection Failed\n\nYour education token could not be verified.");
+                    return;
+                }
+
+                session.setEducationTenantId(tokenResult.getTenantId());
+                session.setEducationServerToken(serverToken);
+
+                // Swap to the education codec. A swap is structurally unavoidable.
+                // The initial codec is chosen when RequestNetworkSettingsPacket
+                // arrives, and at that point only the protocol version is known.
+                // Education clients report the same protocol version as standard
+                // Bedrock, so the pre-auth flow has no way to distinguish them.
+                // The education flag only surfaces when LoginPacket's clientData
+                // is parsed, which is where this code runs. So every education
+                // session starts on the standard codec and swaps to the education
+                // one here.
+                BedrockCodec educationCodec = GameProtocol.getEducationCodec(
+                        session.getUpstream().getSession().getCodec().getProtocolVersion());
+                if (educationCodec == null) {
+                    session.disconnect("Outdated Geyser proxy! This server has not yet been updated to support your Education Edition version.");
+                    return;
+                }
+                session.getUpstream().getSession().setCodec(educationCodec);
+            }
+
             IdentityData extraData = result.identityClaims().extraData;
-            String xuid = extraData.xuid;
+            // For education clients, use the MESS-verified oid as xuid
+            String xuid = isEducationClient && session.getEducationServerToken() != null
+                    ? session.getEducationServerToken().split("\\|")[1]
+                    : extraData.xuid;
             if (geyser.config().advanced().bedrock().useWaterdogpeForwarding()) {
                 String waterdogIp = data.getWaterdogIp();
                 String waterdogXuid = data.getWaterdogXuid();
@@ -117,6 +179,7 @@ public class LoginEncryptionUtils {
                     return;
                 }
             }
+
             session.setAuthData(new AuthData(extraData.displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));
 
             try {
@@ -139,11 +202,14 @@ public class LoginEncryptionUtils {
         KeyPair serverKeyPair = EncryptionUtils.createKeyPair();
         byte[] token = EncryptionUtils.generateRandomToken();
 
-        ServerToClientHandshakePacket packet = new ServerToClientHandshakePacket();
-        packet.setJwt(EncryptionUtils.createHandshakeJwt(serverKeyPair, token));
-        session.sendUpstreamPacketImmediately(packet);
+        String signedToken = session.isEducationClient() ? session.getEducationServerToken() : null;
+        String jwt = EncryptionUtils.createHandshakeJwt(serverKeyPair, token, signedToken);
 
         SecretKey encryptionKey = EncryptionUtils.getSecretKey(serverKeyPair.getPrivate(), key, token);
+
+        ServerToClientHandshakePacket packet = new ServerToClientHandshakePacket();
+        packet.setJwt(jwt);
+        session.sendUpstreamPacketImmediately(packet);
         session.getUpstream().getSession().enableEncryption(encryptionKey);
     }
 

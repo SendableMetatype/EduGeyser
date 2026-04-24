@@ -86,17 +86,24 @@ public class GeyserSessionAdapter extends SessionAdapter {
                         bedrockAddress = bedrockAddress.substring(0, ipv6ScopeIndex);
                     }
 
+                    boolean isEdu = session.isEducationClient();
+                    String xuid = session.xuid();
+                    // Use the tenant ID extracted from EduTokenChain, NOT clientData.getTenantId() (always null for edu)
+                    String tenantId = isEdu && session.getEducationTenantId() != null ? session.getEducationTenantId() : "";
+                    int adRole = isEdu ? clientData.getAdRole() : -1;
+
                     encryptedData = cipher.encryptFromString(BedrockData.of(
                         clientData.getGameVersion(),
                         session.bedrockUsername(),
-                        session.xuid(),
+                        xuid,
                         clientData.getDeviceOs().ordinal(),
                         clientData.getLanguageCode(),
                         clientData.getUiProfile().ordinal(),
                         clientData.getCurrentInputMode().ordinal(),
                         bedrockAddress,
                         skinUploader == null ? 0 : skinUploader.getId(),
-                        skinUploader == null ? null : skinUploader.getVerifyCode()
+                        skinUploader == null ? null : skinUploader.getVerifyCode(),
+                        isEdu, tenantId, adRole
                     ).toString());
                 } catch (Exception e) {
                     geyser.getLogger().error(GeyserLocale.getLocaleStringLog("geyser.auth.floodgate.encrypt_fail"), e);
@@ -139,7 +146,13 @@ public class GeyserSessionAdapter extends SessionAdapter {
         if (uuid == null) {
             // Set what our UUID *probably* is going to be
             if (session.remoteServer().authType() == AuthType.FLOODGATE) {
-                uuid = new UUID(0, Long.parseLong(session.xuid()));
+                if (session.isEducationClient()) {
+                    // Education clients are guaranteed to have a verified MESS token at this point
+                    // (LoginEncryptionUtils rejects them otherwise). The xuid is the Entra OID.
+                    uuid = createEducationUuid(session.xuid());
+                } else {
+                    uuid = new UUID(0, Long.parseLong(session.xuid()));
+                }
             } else {
                 uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + session.getProtocol().getProfile().getName()).getBytes(StandardCharsets.UTF_8));
             }
@@ -236,5 +249,32 @@ public class GeyserSessionAdapter extends SessionAdapter {
         if (geyser.config().debugMode())
             event.getCause().printStackTrace();
         event.setSuppress(true);
+    }
+
+    /**
+     * Generate a stable, unique UUID for education players from their Entra OID.
+     * The OID is a UUID v4 assigned by Microsoft to an Entra account. It is
+     * cryptographically signed in the MESS token, immutable, and globally unique.
+     * A person with multiple Entra accounts has multiple OIDs, the same way a
+     * person with multiple Xbox accounts has multiple xuids.
+     *
+     * MSB is fixed so education UUIDs are distinguishable from Bedrock (MSB=0)
+     * and Java (random v4). LSB is 64 purely random bits extracted from the OID
+     * by stripping the 6 fixed UUID v4 bits (version nibble at bits 48-51,
+     * variant at bits 64-65).
+     */
+    public static final long EDUCATION_UUID_MSB = 0x0000000100000001L;
+
+    static UUID createEducationUuid(String oid) {
+        UUID parsed = UUID.fromString(oid);
+        long msb = parsed.getMostSignificantBits();
+        long lsb = parsed.getLeastSignificantBits();
+
+        // Strip version nibble (bits 48-51) and variant (bits 64-65),
+        // pack first 64 purely random bits left-to-right:
+        //   bits 0-47 (48 random) + bits 52-63 (12 random) + bits 66-69 (4 random) = 64
+        long upper = ((msb >>> 16) << 12) | (msb & 0xFFF);  // 60 random bits
+        long lower = (lsb << 2) >>> 60;                       // 4 random bits
+        return new UUID(EDUCATION_UUID_MSB, (upper << 4) | lower);
     }
 }

@@ -643,6 +643,28 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
     private boolean reducedDebugInfo = false;
 
     /**
+     * Whether this client is Minecraft Education Edition.
+     * Determined from BedrockClientData.isEducationEdition(), which reads the IsEduMode claim in the client JWT.
+     */
+    @Getter @Setter
+    private boolean educationClient = false;
+
+    /**
+     * The tenant ID extracted from the EduTokenChain JWT payload.
+     * This is the real, cryptographically signed tenant ID. Do NOT use
+     * BedrockClientData.getTenantId() as it is always null for edu clients.
+     */
+    @Getter @Setter
+    private @Nullable String educationTenantId = null;
+
+    /**
+     * The MESS-signed server token extracted from the client's EduTokenChain.
+     * Echoed back in the handshake JWT for education clients.
+     */
+    @Getter @Setter
+    private @Nullable String educationServerToken = null;
+
+    /**
      * The op permission level set by the server
      */
     @Setter
@@ -1814,6 +1836,12 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
         startGamePacket.setWorldId("");
         startGamePacket.setScenarioId("");
         startGamePacket.setOwnerId("");
+
+        // Disable Code Builder for education clients. It's unsupported on Java servers
+        // and would cause an illegal packet disconnect if the client opens it.
+        if (educationClient) {
+            startGamePacket.getGamerules().add(new GameRuleData<>("codebuilder", false));
+        }
 
         upstream.sendPacket(startGamePacket);
     }

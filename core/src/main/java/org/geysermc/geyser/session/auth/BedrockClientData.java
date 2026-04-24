@@ -127,6 +127,41 @@ public final class BedrockClientData {
     @SerializedName(value = "ThirdPartyNameOnly")
     private boolean thirdPartyNameOnly;
 
+    @SerializedName(value = "IsEduMode")
+    private boolean isEduMode;
+    /**
+     * Always null for Education Edition clients. Use the tenant ID from
+     * the MESS-signed server token in EduTokenChain instead.
+     */
+    @SerializedName(value = "TenantId")
+    private String tenantId;
+    /**
+     * The Active Directory role reported by the client (0 = student, 1 = teacher).
+     * <p>
+     * <b>This value is client-controlled and not cryptographically verified.</b>
+     * It is forwarded to Floodgate as context only. Do not use it for authorization
+     * decisions since any education client can set this field to any value.
+     */
+    @SerializedName(value = "ADRole")
+    private int adRole;
+
+    /**
+     * Returns a human-readable name for the AD role code.
+     */
+    public String adRoleName() {
+        return switch (adRole) {
+            case 0 -> "student";
+            case 1 -> "teacher";
+            default -> "role=" + adRole;
+        };
+    }
+    @SerializedName(value = "EduJoinerToHostNonce")
+    private String eduJoinerToHostNonce;
+    @SerializedName(value = "EduSessionToken")
+    private String eduSessionToken;
+    @SerializedName(value = "EduTokenChain")
+    private String eduTokenChain;
+
     @SerializedName(value = "Waterdog_IP")
     private String waterdogIp;
     @SerializedName(value = "Waterdog_XUID")
@@ -134,6 +169,14 @@ public final class BedrockClientData {
 
     @Setter
     private transient String originalString = null;
+
+    /**
+     * Returns true if this client is Minecraft Education Edition,
+     * detected by IsEduMode field in the client data JWT.
+     */
+    public boolean isEducationEdition() {
+        return isEduMode;
+    }
 
     public DeviceOs getDeviceOs() {
         return deviceOs != null ? deviceOs : DeviceOs.UNKNOWN;
