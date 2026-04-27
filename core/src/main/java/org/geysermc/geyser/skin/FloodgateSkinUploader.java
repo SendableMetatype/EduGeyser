@@ -56,7 +56,7 @@ import org.java_websocket.handshake.ServerHandshake;
 
 public final class FloodgateSkinUploader {
     private static final int MAX_QUEUED_ENTRIES = 500;
-    private static final String SIGNING_RELAY_URL = "http://46.225.157.109:8080/sign";
+    private static final String SIGNING_RELAY_URL = "https://api.edugeyser.org/sign";
 
     private final GeyserLogger logger;
     private final WebSocketClient client;
