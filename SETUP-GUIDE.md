@@ -63,7 +63,7 @@ Share this link with students. They click it and Education Edition opens and con
 minecraftedu://connect/?serverUrl=YOUR_SERVER_IP&serverPort=19132
 ```
 
-The [EduGeyser connection page](https://sendablemetatype.github.io/join/) makes this easy - share the link with students, they enter the server IP and port, and click Join. Education Edition launches and connects directly. Students can also save servers for quick access later.
+The [EduGeyser connection page](https://edugeyser.org) makes this easy - share the link with students, they enter the server IP and port, and click Join. Education Edition launches and connects directly. Students can also save servers for quick access later.
 
 The downside: this is a one-time connection. Students need the link again each time they want to rejoin. For repeated use, the resource pack is better.
 
