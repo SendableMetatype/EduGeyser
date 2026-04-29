@@ -665,7 +665,7 @@ public class GeyserSession implements GeyserConnection, GeyserCommandSource {
      * since the xuid in the response belongs to the relay's donor account.
      */
     @Getter @Setter
-    private @Nullable String educationSkinHash = null;
+    private volatile @Nullable String educationSkinHash = null;
 
     /**
      * The MESS-signed server token extracted from the client's EduTokenChain.
