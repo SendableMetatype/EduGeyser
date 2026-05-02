@@ -9,7 +9,7 @@ A [Geyser](https://github.com/GeyserMC/Geyser) fork that enables **Minecraft Edu
 - Verified player identity via Microsoft Education Services
 - Education player skins visible to Java players via the [EduGeyser Signing Relay](https://github.com/SendableMetatype/EduGeyser-Signing-Relay)
 - [Floodgate](https://github.com/SendableMetatype/EduFloodgate) integration with education-specific UUIDs and username formatting
-- Optional [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) adding server list broadcasting, join codes, and direct connection IDs for easier student access
+- [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) providing join codes, connection IDs, and server list broadcasting for student access
 
 ## Downloads
 
@@ -43,7 +43,7 @@ Special thanks to the DragonProxy project for being a trailblazer in protocol tr
 
 | Edition   | Supported Versions                                                                                   |
 |-----------|------------------------------------------------------------------------------------------------------|
-| Education | 1.21.132 (also 1.21.131.1 Preview)                                                                   |
+| Education | 1.21.132, 1.21.133                                                                               |
 | Bedrock   | 1.21.130 - 1.21.132, 26.0, 26.1, 26.2, 26.3, 26.10                                                   |
 | Java      | 1.21.11 (For older versions, [see this guide](https://geysermc.org/wiki/geyser/supported-versions/)) |
 
