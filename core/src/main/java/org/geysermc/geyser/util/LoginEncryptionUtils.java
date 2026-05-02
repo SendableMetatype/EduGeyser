@@ -44,6 +44,7 @@ import org.geysermc.cumulus.response.result.FormResponseResult;
 import org.geysermc.cumulus.response.result.ValidFormResponseResult;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.network.GameProtocol;
+import org.geysermc.geyser.network.netty.BedrockEncryptionControl;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.auth.AuthData;
 import org.geysermc.geyser.session.auth.BedrockClientData;
@@ -183,7 +184,9 @@ public class LoginEncryptionUtils {
             session.setAuthData(new AuthData(extraData.displayName, extraData.identity, xuid, issuedAt, extraData.minecraftId));
 
             try {
-                startEncryptionHandshake(session, identityPublicKey);
+                boolean enableEncryption = !BedrockEncryptionControl.isEncryptionDisabled(
+                        session.getUpstream().getSession().getPeer().getChannel());
+                startEncryptionHandshake(session, identityPublicKey, enableEncryption);
             } catch (Throwable e) {
                 // An error can be thrown on older Java 8 versions about an invalid key
                 if (geyser.config().debugMode()) {
@@ -198,19 +201,22 @@ public class LoginEncryptionUtils {
         }
     }
 
-    private static void startEncryptionHandshake(GeyserSession session, PublicKey key) throws Exception {
+    private static void startEncryptionHandshake(GeyserSession session, PublicKey key,
+                                                 boolean enableEncryption) throws Exception {
         KeyPair serverKeyPair = EncryptionUtils.createKeyPair();
         byte[] token = EncryptionUtils.generateRandomToken();
 
         String signedToken = session.isEducationClient() ? session.getEducationServerToken() : null;
         String jwt = EncryptionUtils.createHandshakeJwt(serverKeyPair, token, signedToken);
 
-        SecretKey encryptionKey = EncryptionUtils.getSecretKey(serverKeyPair.getPrivate(), key, token);
-
         ServerToClientHandshakePacket packet = new ServerToClientHandshakePacket();
         packet.setJwt(jwt);
         session.sendUpstreamPacketImmediately(packet);
-        session.getUpstream().getSession().enableEncryption(encryptionKey);
+
+        if (enableEncryption) {
+            SecretKey encryptionKey = EncryptionUtils.getSecretKey(serverKeyPair.getPrivate(), key, token);
+            session.getUpstream().getSession().enableEncryption(encryptionKey);
+        }
     }
 
     private static void sendEncryptionFailedMessage(GeyserImpl geyser) {

@@ -36,6 +36,7 @@ import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
 import org.cloudburstmc.protocol.bedrock.netty.codec.packet.BedrockPacketCodec;
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitializer;
 import org.geysermc.geyser.GeyserImpl;
+import org.geysermc.geyser.network.netty.BedrockEncryptionControl;
 import org.geysermc.geyser.session.GeyserSession;
 
 import java.net.InetSocketAddress;
@@ -57,6 +58,7 @@ public class GeyserServerInitializer extends BedrockServerInitializer {
         if (!rakCookiesEnabled) {
             channel.setOption(RakChannelOption.RAK_PROTOCOL_VERSION, 11);
         }
+        channel.pipeline().addLast(BedrockEncryptionControl.HANDLER_NAME, BedrockEncryptionControl.createServerHandler());
         super.preInitChannel(channel);
     }
 
