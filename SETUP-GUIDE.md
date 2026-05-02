@@ -10,8 +10,6 @@ EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows
 
 - [Requirements](#requirements)
 - [Installation](#installation)
-- [How Students Connect](#how-students-connect)
-- [Server List Broadcasting (Optional)](#server-list-broadcasting-optional)
 - [EduFloodgate Configuration](#edufloodgate-configuration)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -25,11 +23,12 @@ EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows
 - Java 17 or newer
 - EduGeyser jar (replaces standard Geyser)
 - EduFloodgate jar (replaces standard Floodgate) - required for proper username/UUID handling
+- [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) - handles how students connect
 
-> **Simplest setup:** A single Paper server with EduGeyser and EduFloodgate as plugins. No proxy needed. If you already run a Velocity/BungeeCord network, EduGeyser works there too - install EduGeyser on the proxy and EduFloodgate on both the proxy and backend servers.
+> **Simplest setup:** A single Paper server with EduGeyser, EduFloodgate, and the Education Extension. No proxy needed. If you already run a Velocity/BungeeCord network, EduGeyser works there too - install EduGeyser and the extension on the proxy and EduFloodgate on both the proxy and backend servers.
 
 **Client side:**
-- Minecraft Education Edition v1.21.132 or newer
+- Minecraft Education Edition v1.21.133 or newer
 - A Microsoft 365 Education account (school-provided)
 - Windows, macOS, iPad, Chromebook, or Android
 
@@ -37,8 +36,8 @@ EduGeyser is a modified version of [GeyserMC](https://geysermc.org/) that allows
 
 ## Installation
 
-1. Download the latest [EduGeyser](https://github.com/SendableMetatype/EduGeyser/releases) and [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate/releases) jars
-2. Place them in your server's plugins folder (replacing standard Geyser and Floodgate if present)
+1. Download the latest [EduGeyser](https://github.com/SendableMetatype/EduGeyser/releases), [EduFloodgate](https://github.com/SendableMetatype/EduFloodgate/releases), and [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension/releases) jars
+2. Place them in your server's plugins folder (replacing standard Geyser and Floodgate if present). The extension jar goes in the Geyser `extensions` folder.
 3. Make sure `auth-type` is set to `floodgate` in the Geyser config:
 
 ```yaml
@@ -47,49 +46,11 @@ auth-type: floodgate
 
 4. Start the server
 
-That's it. Education clients can now connect. No tokens, no configuration, no admin accounts needed.
+On first start, the extension generates a **Connection ID** (a 10-digit number) and prints it to the console. Students connect by opening Education Edition, pressing **Play**, then **Join World**, then the small **...** button to the right of the confirm button. In this dialog they can enter the Connection ID to join. No accounts or configuration needed.
 
----
+For **join codes** and **server list broadcasting**, see the [extension's documentation](https://github.com/SendableMetatype/Geyser-Education-Extension).
 
-## How Students Connect
-
-Education Edition does not natively have a server list for direct IP connections. There are several ways for students to connect:
-
-### Connection Link (Quickest)
-
-Share this link with students. They click it and Education Edition opens and connects directly:
-
-```
-minecraftedu://connect/?serverUrl=YOUR_SERVER_IP&serverPort=19132
-```
-
-The EduGeyser connection page at [edugeyser.org](https://edugeyser.org) makes this easy - share the link with students, they enter the server IP and port, and click Join. Education Edition launches and connects directly. Students can also save servers for quick access later.
-
-The downside: this is a one-time connection. Students need the link again each time they want to rejoin. For repeated use, the resource pack is better.
-
-### Server List Resource Pack (Recommended for Repeated Use)
-
-The included **EduGeyser Server List resource pack** adds a permanent **Servers** button to Education Edition's home screen - the same server list interface that regular Bedrock players have.
-
-**Setup:**
-1. Share the [`ServerButton.mcpack`](education-tools/ServerButton.mcpack) file with students (via Teams, Classroom, email, or a shared drive)
-2. Students open the file - Education Edition installs the resource pack automatically
-3. Students go to **Settings > Global Resources** and activate the pack
-4. Back on the Play screen, a **Servers** button now appears
-5. Students click **Add Server**, enter your server's name, IP, and port, then click **Save**
-6. The server is permanently saved - students just click it to connect
-
----
-
-## Geyser Education Extension (Optional)
-
-The [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) adds three additional ways for students to find and join your server:
-
-- **Join Codes** — Students enter a code in Education Edition's built-in "Join Code" screen, or click a share link. No IP address needed. Any M365 Education account can create codes.
-- **Connection ID** — A single 10-digit number that students enter directly in Education Edition's connection dialog. Works across all tenants, so students from different schools can join with the same ID.
-- **Server List Broadcasting** — Your server appears automatically in Education Edition's built-in server browser. Requires Global Admin access to each M365 Education tenant you want to broadcast to.
-
-This extension is completely optional. Education support in EduGeyser works out of the box, and students can always connect via direct IP or a connection link. See the extension's README for setup instructions.
+For general Geyser configuration (ports, proxy setup, etc.), see the [Geyser wiki](https://geysermc.org/wiki/geyser/setup/).
 
 ---
 
@@ -106,8 +67,8 @@ education-prefix: "+"
 
 Education Edition usernames often collide (the Entra default format is "FirstnameLastInitial," which is not unique per-user). When two education players with the same display name are online simultaneously, Floodgate appends a `_N` suffix to resolve the collision:
 
-- First "Mark" to join → `+Mark`
-- Second "Mark" to join → `+Mark_2`
+- First "Mark" to join: `+Mark`
+- Second "Mark" to join: `+Mark_2`
 
 ---
 
@@ -145,7 +106,7 @@ Yes. EduGeyser detects each client type automatically. Both can play together.
 
 ### Do students need to install anything?
 
-No additional software. Students can connect via a direct IP link. For easier access, the optional [Geyser Education Extension](https://github.com/SendableMetatype/Geyser-Education-Extension) provides join codes, a cross-tenant connection ID, and server list broadcasting. A resource pack is also available that adds a permanent Servers button to Education Edition.
+No. Students connect through Education Edition's built-in connection dialog using the Connection ID, or through join codes if configured.
 
 ### Is this safe for schools?
 
@@ -161,22 +122,18 @@ The software is free. No Microsoft licenses, admin accounts, or subscriptions ar
 
 ### Can students from different schools join the same server?
 
-Yes. Any student from any M365 Education tenant can connect without any server-side configuration.
+Yes. The Connection ID works across all tenants. Students from any school can join using the same ID.
 
 ---
 
-## Appendix
-
-### Supported Platforms
+## Supported Platforms
 
 Education Edition runs on these platforms, all of which can connect to EduGeyser:
 
-| Platform | Connection Methods |
-|----------|-------------------|
-| Windows 10/11 | URI link, resource pack, join code, connection ID, server list (last three with extension) |
-| macOS | URI link, resource pack, join code, connection ID, server list (last three with extension) |
-| iPad / iOS | URI link, resource pack, join code, connection ID, server list (last three with extension) |
-| Chromebook | URI link, resource pack, join code, connection ID, server list (last three with extension) |
-| Android | URI link, resource pack, join code, connection ID, server list (last three with extension) |
-
-The `minecraftedu://connect` URI scheme works on all platforms where Education Edition is installed.
+| Platform | Supported |
+|----------|-----------|
+| Windows 10/11 | Yes |
+| macOS | Yes |
+| iPad / iOS | Yes |
+| Chromebook | Yes |
+| Android | Yes |
