@@ -1,0 +1,6 @@
+jdk:
+  - openjdk21
+before_install:
+  - git submodule update --init --recursive
+install:
+  - ./gradlew clean publishToMavenLocal -xtest -xsignMavenPublication
